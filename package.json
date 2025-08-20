@@ -1,0 +1,63 @@
+{
+  "name": "sham-truk-backend",
+  "version": "1.0.0",
+  "main": "./src/index.ts",
+  "type": "commonjs",
+  "scripts": {
+    "dev": "nodemon src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "build:watch": "tsc --watch"
+  },
+  "_moduleAliases": {
+    "@": "dist",
+    "@controllers": "dist/controllers",
+    "@models": "dist/models",
+    "@routes": "dist/routes"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "bcryptjs": "^3.0.2",
+    "cloudinary": "^2.7.0",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^16.5.0",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.0.1",
+    "express-validator": "^7.2.1",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "module-alias": "^2.2.3",
+    "mongodb": "^6.15.0",
+    "mongoose": "^8.13.2",
+    "morgan": "^1.10.0",
+    "multer": "^1.4.5-lts.2",
+    "node-cron": "^4.2.1",
+    "socket.io": "^4.8.1",
+    "typescript": "^5.8.3"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cookie-parser": "^1.4.8",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.1",
+    "@types/helmet": "^0.0.48",
+    "@types/jsonwebtoken": "^9.0.9",
+    "@types/module-alias": "^2.0.4",
+    "@types/mongoose": "^5.11.96",
+    "@types/morgan": "^1.9.9",
+    "@types/multer": "^1.4.12",
+    "@types/node": "^22.17.2",
+    "@types/node-cron": "^3.0.11",
+    "@types/socket.io": "^3.0.1",
+    "@typescript-eslint/eslint-plugin": "^8.29.1",
+    "@typescript-eslint/parser": "^8.29.1",
+    "eslint": "^9.24.0",
+    "nodemon": "^3.1.9",
+    "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0"
+  }
+}
