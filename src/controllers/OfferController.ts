@@ -6,8 +6,7 @@ import { createNotification, notificationTemplates } from '../utils/notification
 
 export const createOffer = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
-        const { order_id, price, notes } = req.body;
-
+        const { order_id, price, notes,type } = req.body;
 
 
         const order = await Order.findById(order_id);
@@ -31,11 +30,12 @@ export const createOffer = async (req: AuthRequest, res: Response): Promise<void
             driver_id: req.user?.id,
             price,
             notes,
+            type,
             status: 'Pending'
         });
 
         const populatedOffer = await Offer.findById(offer._id)
-            .populate('driver_id', 'fullName email phoneNumber vehicleNumber vehicleType photo')
+            .populate('driver_id', 'fullName email phoneNumber vehicleNumber vehicleType photo type')
             .populate('order_id');
 
 
@@ -227,7 +227,13 @@ export const getOrderOffers = async (req: Request, res: Response): Promise<void>
 export const getDriverOffers = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
         const offers = await Offer.find({ driver_id: req.user?.id })
-            .populate('order_id')
+            .populate({
+                path: 'order_id',
+                populate: {
+                    path: 'customer_id',
+                    select: 'fullName email phoneNumber'
+                }
+            })
             .sort({ createdAt: -1 });
 
         res.json(offers);
