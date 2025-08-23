@@ -28,10 +28,10 @@ export const getUserById = async (req: Request, res: Response): Promise<void> =>
 
 export const updateUser = async (req: Request, res: Response): Promise<void> => {
     try {
-        const { fullName, phoneNumber } = req.body;
+        const { fullName, phoneNumber,email } = req.body;
         const user = await User.findByIdAndUpdate(
             req.params.id,
-            { fullName, phoneNumber },
+            { fullName, phoneNumber,email },
             { new: true, runValidators: true }
         ).select('-password');
 

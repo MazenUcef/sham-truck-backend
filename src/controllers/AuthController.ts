@@ -6,6 +6,7 @@ import { generateToken } from "../utils/token";
 import Driver from "../models/Driver";
 import { deleteFromCloudinary, uploadToCloudinary } from "../utils/cloudinary";
 
+
 export const signUpUser = async (req: Request, res: Response): Promise<void> => {
     try {
         const { fullName, email, password, phoneNumber }: UserInterface = req.body;
@@ -43,7 +44,6 @@ export const signUpUser = async (req: Request, res: Response): Promise<void> => 
         res.status(500).json({ message: 'Internal server error' });
     }
 }
-
 
 
 export const signUpDriver = async (req: Request, res: Response): Promise<void> => {
