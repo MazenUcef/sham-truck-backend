@@ -6,8 +6,7 @@ import { createNotification, notificationTemplates } from '../utils/notification
 
 export const createOffer = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
-        const { order_id, price, notes,type } = req.body;
-
+        const { order_id, price, notes, type } = req.body;
 
         const order = await Order.findById(order_id);
         if (!order) {
@@ -35,14 +34,20 @@ export const createOffer = async (req: AuthRequest, res: Response): Promise<void
         });
 
         const populatedOffer = await Offer.findById(offer._id)
-            .populate('driver_id', 'fullName email phoneNumber vehicleNumber vehicleType photo type')
+            .populate({
+                path: 'driver_id',
+                select: 'fullName email phoneNumber vehicleNumber vehicleType photo',
+                populate: {
+                    path: 'vehicleType',
+                    model: 'Vehicle',
+                    select: '_id category type image imagePublicId createdAt updatedAt __v'
+                }
+            })
             .populate('order_id');
-
 
         const io = req.app.get('io');
         io.to(`user-${order.customer_id}`).emit('new-offer', populatedOffer);
         io.to(`order-${order_id}`).emit('offer-created', populatedOffer);
-
 
         const notificationData = {
             user_id: order.customer_id.toString(),
@@ -128,7 +133,15 @@ export const updateOffer = async (req: Request, res: Response): Promise<void> =>
 export const acceptOffer = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
         const offer = await Offer.findById(req.params.id)
-            .populate('driver_id', 'fullName email phoneNumber vehicleNumber vehicleType photo')
+            .populate({
+                path: 'driver_id',
+                select: 'fullName email phoneNumber vehicleNumber vehicleType photo',
+                populate: {
+                    path: 'vehicleType',
+                    model: 'Vehicle',
+                    select: '_id category type image imagePublicId createdAt updatedAt __v'
+                }
+            })
             .populate('order_id');
 
         if (!offer) {
@@ -214,7 +227,15 @@ export const rejectOffer = async (req: AuthRequest, res: Response): Promise<void
 export const getOrderOffers = async (req: Request, res: Response): Promise<void> => {
     try {
         const offers = await Offer.find({ order_id: req.params.orderId })
-            .populate('driver_id', 'fullName email phoneNumber vehicleNumber vehicleType photo')
+            .populate({
+                path: 'driver_id',
+                select: 'fullName email phoneNumber vehicleNumber vehicleType photo',
+                populate: {
+                    path: 'vehicleType',
+                    model: 'Vehicle',
+                    select: '_id category type image imagePublicId createdAt updatedAt __v'
+                }
+            })
             .sort({ createdAt: -1 });
 
         res.json(offers);
@@ -227,6 +248,15 @@ export const getOrderOffers = async (req: Request, res: Response): Promise<void>
 export const getDriverOffers = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
         const offers = await Offer.find({ driver_id: req.user?.id })
+            .populate({
+                path: 'driver_id',
+                select: 'fullName email phoneNumber vehicleNumber vehicleType photo',
+                populate: {
+                    path: 'vehicleType',
+                    model: 'Vehicle',
+                    select: '_id category type image imagePublicId createdAt updatedAt __v'
+                }
+            })
             .populate({
                 path: 'order_id',
                 populate: {

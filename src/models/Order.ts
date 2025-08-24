@@ -19,7 +19,7 @@ const orderSchema = new Schema<IOrder>(
   {
     customer_id: {
       type: Schema.Types.ObjectId,
-      ref: 'User',
+      ref: 'Router',
       required: true,
     },
     from_location: {
@@ -32,7 +32,7 @@ const orderSchema = new Schema<IOrder>(
     },
     vehicle_type: {
       type: Schema.Types.ObjectId,
-      ref: 'VehicleType',
+      ref: 'Vehicle',
       required: true,
     },
     weight_or_volume: {

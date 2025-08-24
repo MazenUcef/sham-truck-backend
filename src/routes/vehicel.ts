@@ -3,7 +3,7 @@ import { body } from 'express-validator';
 import { validate } from '../middleware/validation';
 import { authenticate } from '../middleware/auth';
 import upload from '../config/multer';
-import { createVehicleType, deleteVehicleType, getVehicleTypeById, getVehicleTypes, updateVehicleType } from '../controllers/VehicleController';
+import { createVehicle, deleteVehicleType, getVehicleTypeById, getVehicleTypes, updateVehicleType } from '../controllers/VehicleController';
 
 const router = express.Router();
 
@@ -20,7 +20,7 @@ router.post(
     upload.single('image'),
     vehicleTypeValidation,
     validate,
-    createVehicleType
+    createVehicle
 );
 router.put(
     '/types/:id',

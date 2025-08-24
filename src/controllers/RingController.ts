@@ -10,7 +10,7 @@ export const sendRing = async (req: AuthRequest, res: Response): Promise<void> =
 
         const order = await Order.findById(order_id)
             .populate('customer_id', 'fullName phoneNumber')
-            .populate('vehicle_type', 'type description');
+            .populate('vehicle_type', 'type category');
 
         if (!order) {
             res.status(404).json({ message: 'Order not found' });
@@ -37,7 +37,7 @@ export const sendRing = async (req: AuthRequest, res: Response): Promise<void> =
             io.to(`user-${order.customer_id._id}`).emit('ring-notification', notification);
             io.to(`order-${order_id}`).emit('ring-sent', notification);
 
-        } else if (req.user?.role === 'user') {
+        } else if (req.user?.role === 'router') {
             const acceptedOffer = await Offer.findOne({
                 order_id: order._id,
                 status: 'Accepted'
@@ -84,7 +84,7 @@ export const getRingHistory = async (req: AuthRequest, res: Response): Promise<v
             query.order_id = order_id;
         }
 
-        if (req.user?.role === 'user') {
+        if (req.user?.role === 'router') {
             query.user_id = req.user.id;
         } else if (req.user?.role === 'driver') {
             query.driver_id = req.user.id;

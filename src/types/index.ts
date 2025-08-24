@@ -18,14 +18,14 @@ export interface Driver {
     photo: string;
     photoPublicId?: string;
     vehicleNumber: string;
-    vehicleType: string;
+    vehicleTypeId: string;
     createdAt?: Date;
     updatedAt?: Date;
 }
 
 export interface JwtPayload {
   id: string;
-  role: 'user' | 'driver' | 'admin';
+  role: 'router' | 'driver' | 'admin';
   fullName: string;
   iat?: number;
   exp?: number;
@@ -38,7 +38,7 @@ export interface AuthRequest extends Request {
 export interface VehicleType {
   _id?: string;
   type: string;
-  description?: string;
+  category?: string;
   image?: string;
   imagePublicId?: string;
 }

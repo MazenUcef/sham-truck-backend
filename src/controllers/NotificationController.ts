@@ -7,7 +7,7 @@ export const getNotifications = async (req: AuthRequest, res: Response): Promise
     const { page = 1, limit = 20, unreadOnly = false } = req.query;
     const query: any = {};
 
-    if (req.user?.role === 'user') {
+    if (req.user?.role === 'router') {
       query.user_id = req.user.id;
     } else if (req.user?.role === 'driver') {
       query.driver_id = req.user.id;
@@ -67,7 +67,7 @@ export const markAllAsRead = async (req: AuthRequest, res: Response): Promise<vo
   try {
     const query: any = {};
 
-    if (req.user?.role === 'user') {
+    if (req.user?.role === 'router') {
       query.user_id = req.user.id;
     } else if (req.user?.role === 'driver') {
       query.driver_id = req.user.id;
@@ -107,7 +107,7 @@ export const getUnreadCount = async (req: AuthRequest, res: Response): Promise<v
   try {
     const query: any = {};
 
-    if (req.user?.role === 'user') {
+    if (req.user?.role === 'router') {
       query.user_id = req.user.id;
     } else if (req.user?.role === 'driver') {
       query.driver_id = req.user.id;

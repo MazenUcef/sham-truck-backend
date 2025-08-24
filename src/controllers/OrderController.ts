@@ -4,8 +4,10 @@ import Offer from '../models/Offer';
 import { Socket } from 'socket.io';
 import { AuthRequest } from '../types';
 import mongoose from 'mongoose';
-import VehicleType from '../models/VehicleType';
+import VehicleType from '../models/Vehicle';
 import { createNotification, notificationTemplates } from '../utils/notifications';
+import Driver from '../models/Driver';
+import Vehicle from '../models/Vehicle';
 
 export const createOrder = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
@@ -44,7 +46,7 @@ export const createOrder = async (req: AuthRequest, res: Response): Promise<void
 
         const populatedOrder = await Order.findById(order._id)
             .populate('customer_id', 'fullName email phoneNumber')
-            .populate('vehicle_type', 'type description image');
+            .populate('vehicle_type', 'category type image');
 
 
         const io = req.app.get('io');
@@ -70,7 +72,7 @@ export const createOrder = async (req: AuthRequest, res: Response): Promise<void
     }
 };
 
-export const getOrders = async (req: Request, res: Response): Promise<void> => {
+export const getOrders = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
         const { status, page = 1, limit = 10 } = req.query;
         const query: any = {};
@@ -79,14 +81,126 @@ export const getOrders = async (req: Request, res: Response): Promise<void> => {
             query.status = status;
         }
 
-        const orders = await Order.find(query)
-            .populate('customer_id', 'fullName email phoneNumber')
-            .populate('vehicle_type', 'type description image')
-            .sort({ createdAt: -1 })
-            .limit(Number(limit) * 1)
-            .skip((Number(page) - 1) * Number(limit));
+        let orders;
+        let total;
 
-        const total = await Order.countDocuments(query);
+        if (req.user?.role === 'driver') {
+            const driver = await Driver.findById(req.user.id).select('vehicleType');
+            if (!driver) {
+                res.status(404).json({ message: 'Driver not found' });
+                return;
+            }
+
+            const driverVehicle = await Vehicle.findById(driver.vehicleType).select('category');
+            if (!driverVehicle) {
+                res.status(400).json({ message: 'Driver vehicle type not found' });
+                return;
+            }
+
+            // Find orders where vehicle_type's category matches the driver's vehicle category
+            orders = await Order.aggregate([
+                {
+                    $lookup: {
+                        from: 'vehicles', // MongoDB collection name for Vehicle model
+                        localField: 'vehicle_type',
+                        foreignField: '_id',
+                        as: 'vehicle_type_data'
+                    }
+                },
+                {
+                    $unwind: '$vehicle_type_data'
+                },
+                {
+                    $match: {
+                        'vehicle_type_data.category': driverVehicle.category,
+                        ...query
+                    }
+                },
+                {
+                    $lookup: {
+                        from: 'routers', // MongoDB collection name for Router (User) model
+                        localField: 'customer_id',
+                        foreignField: '_id',
+                        as: 'customer_id'
+                    }
+                },
+                {
+                    $unwind: '$customer_id'
+                },
+                {
+                    $lookup: {
+                        from: 'vehicles',
+                        localField: 'vehicle_type',
+                        foreignField: '_id',
+                        as: 'vehicle_type'
+                    }
+                },
+                {
+                    $unwind: '$vehicle_type'
+                },
+                {
+                    $project: {
+                        'customer_id.fullName': 1,
+                        'customer_id.email': 1,
+                        'customer_id.phoneNumber': 1,
+                        'vehicle_type.category': 1,
+                        'vehicle_type.type': 1,
+                        'vehicle_type.image': 1,
+                        from_location: 1,
+                        to_location: 1,
+                        weight_or_volume: 1,
+                        date_time_transport: 1,
+                        loading_time: 1,
+                        notes: 1,
+                        status: 1,
+                        createdAt: 1,
+                        updatedAt: 1
+                    }
+                },
+                {
+                    $sort: { createdAt: -1 }
+                },
+                {
+                    $skip: (Number(page) - 1) * Number(limit)
+                },
+                {
+                    $limit: Number(limit)
+                }
+            ]);
+
+            total = await Order.aggregate([
+                {
+                    $lookup: {
+                        from: 'vehicles',
+                        localField: 'vehicle_type',
+                        foreignField: '_id',
+                        as: 'vehicle_type_data'
+                    }
+                },
+                {
+                    $unwind: '$vehicle_type_data'
+                },
+                {
+                    $match: {
+                        'vehicle_type_data.category': driverVehicle.category,
+                        ...query
+                    }
+                },
+                {
+                    $count: 'total'
+                }
+            ]).then(result => result[0]?.total || 0);
+        } else {
+            // For non-drivers (e.g., routers), return all orders
+            orders = await Order.find(query)
+                .populate('customer_id', 'fullName email phoneNumber')
+                .populate('vehicle_type', 'category type image')
+                .sort({ createdAt: -1 })
+                .limit(Number(limit) * 1)
+                .skip((Number(page) - 1) * Number(limit));
+
+            total = await Order.countDocuments(query);
+        }
 
         res.json({
             orders,
@@ -169,7 +283,7 @@ export const getUserOrders = async (req: AuthRequest, res: Response): Promise<vo
     try {
         const orders = await Order.find({ customer_id: req.user?.id })
             .populate('customer_id', 'fullName email phoneNumber')
-            .populate('vehicle_type', 'type description image')
+            .populate('vehicle_type', 'type category image')
             .sort({ createdAt: -1 });
 
         res.json(orders);

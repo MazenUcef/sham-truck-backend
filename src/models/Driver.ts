@@ -23,6 +23,7 @@ const driverSchema = new Schema(
         phoneNumber: {
             type: String,
             required: true,
+            unique: true,
         },
         photo: {
             type: String,

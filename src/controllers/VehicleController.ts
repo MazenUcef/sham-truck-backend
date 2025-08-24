@@ -1,10 +1,10 @@
 import { Request, Response } from 'express';
-import VehicleType from '../models/VehicleType';
 import { uploadToCloudinary, deleteFromCloudinary } from '../utils/cloudinary';
+import Vehicle from '../models/Vehicle';
 
 export const getVehicleTypes = async (req: Request, res: Response): Promise<void> => {
     try {
-        const vehicleTypes = await VehicleType.find().select('type description image');
+        const vehicleTypes = await Vehicle.find().select('category type image');
         res.json(vehicleTypes);
     } catch (error) {
         console.error('Get vehicle types error:', error);
@@ -14,7 +14,7 @@ export const getVehicleTypes = async (req: Request, res: Response): Promise<void
 
 export const getVehicleTypeById = async (req: Request, res: Response): Promise<void> => {
     try {
-        const vehicleType = await VehicleType.findById(req.params.id);
+        const vehicleType = await Vehicle.findById(req.params.id);
         if (!vehicleType) {
             res.status(404).json({ message: 'Vehicle type not found' });
             return;
@@ -26,11 +26,11 @@ export const getVehicleTypeById = async (req: Request, res: Response): Promise<v
     }
 };
 
-export const createVehicleType = async (req: Request, res: Response): Promise<void> => {
+export const createVehicle= async (req: Request, res: Response): Promise<void> => {
     let imagePublicId = '';
 
     try {
-        const { type, description } = req.body;
+        const { category, type } = req.body;
         let image = '';
 
         if (req.file) {
@@ -45,16 +45,16 @@ export const createVehicleType = async (req: Request, res: Response): Promise<vo
             }
         }
 
-        const vehicleType = await VehicleType.create({
+        const vehicle = await Vehicle.create({
+            category,
             type,
-            description,
             image,
             imagePublicId
         });
 
         res.status(201).json({
-            message: 'Vehicle type created successfully',
-            vehicleType,
+            message: 'Vehicle created successfully',
+            vehicle,
         });
     } catch (error) {
         console.error('Create vehicle type error:', error);
@@ -75,8 +75,8 @@ export const updateVehicleType = async (req: Request, res: Response): Promise<vo
     let imagePublicId = '';
 
     try {
-        const { type, description } = req.body;
-        const vehicleType = await VehicleType.findById(req.params.id);
+        const { type, category } = req.body;
+        const vehicleType = await Vehicle.findById(req.params.id);
 
         if (!vehicleType) {
             res.status(404).json({ message: 'Vehicle type not found' });
@@ -99,8 +99,8 @@ export const updateVehicleType = async (req: Request, res: Response): Promise<vo
             }
         }
 
+        vehicleType.category = category || vehicleType.category;
         vehicleType.type = type || vehicleType.type;
-        vehicleType.description = description || vehicleType.description;
 
         await vehicleType.save();
 
@@ -125,7 +125,7 @@ export const updateVehicleType = async (req: Request, res: Response): Promise<vo
 
 export const deleteVehicleType = async (req: Request, res: Response): Promise<void> => {
     try {
-        const vehicleType = await VehicleType.findById(req.params.id);
+        const vehicleType = await Vehicle.findById(req.params.id);
 
         if (!vehicleType) {
             res.status(404).json({ message: 'Vehicle type not found' });
@@ -140,7 +140,7 @@ export const deleteVehicleType = async (req: Request, res: Response): Promise<vo
             }
         }
 
-        await VehicleType.findByIdAndDelete(req.params.id);
+        await Vehicle.findByIdAndDelete(req.params.id);
 
         res.json({ message: 'Vehicle type deleted successfully' });
     } catch (error) {

@@ -2,7 +2,7 @@ import express from 'express';
 import { body } from 'express-validator';
 import { validate } from '../middleware/validation';
 import upload from '../config/multer';
-import { signIn, signUpDriver, signUpUser } from '../controllers/AuthController';
+import { signIn, signUpDriver, signUpRouter } from '../controllers/AuthController';
 
 const router = express.Router();
 
@@ -19,7 +19,7 @@ const driverSignupValidation = [
     body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters long'),
     body('phoneNumber').notEmpty().withMessage('Phone number is required'),
     body('vehicleNumber').notEmpty().withMessage('Vehicle number is required'),
-    body('vehicleType').notEmpty().withMessage('Vehicle type is required'),
+    body('vehicleTypeId').notEmpty().withMessage('Vehicle type is required'),
 ];
 
 const signinValidation = [
@@ -28,7 +28,7 @@ const signinValidation = [
     body('role').isIn(['user', 'driver']).withMessage('Role must be either user or driver'),
 ];
 
-router.post('/signup/user', userSignupValidation, validate, signUpUser);
+router.post('/signup/user', userSignupValidation, validate, signUpRouter);
 router.post('/signup/driver', upload.single('photo'), driverSignupValidation, validate, signUpDriver);
 router.post('/signin', signinValidation, validate, signIn);
 

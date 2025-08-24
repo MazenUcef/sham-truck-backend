@@ -1,14 +1,15 @@
 import { Request, Response } from "express";
-import User from "../models/User";
 import { hashPassword, comparePassword } from "../utils/password";
 import Driver from "../models/Driver";
+import Router from "../models/Router";
+import { deleteFromCloudinary, uploadToCloudinary } from "../utils/cloudinary";
 
-export const getUsers = async (req: Request, res: Response): Promise<void> => {
+export const getRouters = async (req: Request, res: Response): Promise<void> => {
     try {
-        const users = await User.find().select('-password');
-        res.json(users);
+        const routers = await Router.find().select('-password');
+        res.json(routers);
     } catch (error) {
-        console.error('Get users error:', error);
+        console.error('Get routers error:', error);
         res.status(500).json({ message: 'Internal server error' });
     }
 };
@@ -16,7 +17,7 @@ export const getUsers = async (req: Request, res: Response): Promise<void> => {
 export const getUserById = async (req: Request, res: Response): Promise<void> => {
     try {
         const { id } = req.params;
-        const { role } = req.query; // Get role from query params
+        const { role } = req.query;
 
         if (role === 'driver') {
             const driver = await Driver.findById(id).select('-password');
@@ -35,17 +36,17 @@ export const getUserById = async (req: Request, res: Response): Promise<void> =>
                 role: 'driver'
             });
         } else {
-            const user = await User.findById(id).select('-password');
-            if (!user) {
+            const router = await Router.findById(id).select('-password');
+            if (!router) {
                 res.status(404).json({ message: 'User not found' });
                 return;
             }
             res.json({
-                id: user._id,
-                fullName: user.fullName,
-                email: user.email,
-                phoneNumber: user.phoneNumber,
-                role: 'user'
+                id: router._id,
+                fullName: router.fullName,
+                email: router.email,
+                phoneNumber: router.phoneNumber,
+                role: 'router'
             });
         }
     } catch (error) {
@@ -55,17 +56,61 @@ export const getUserById = async (req: Request, res: Response): Promise<void> =>
 };
 
 export const updateUser = async (req: Request, res: Response): Promise<void> => {
+    let photoPublicId = '';
     try {
         const { fullName, phoneNumber, email, vehicleNumber, vehicleType, role } = req.body;
 
         if (role === 'driver') {
-            const driver = await Driver.findByIdAndUpdate(
+            const updateData: any = { fullName, phoneNumber, email, vehicleNumber, vehicleType };
+
+            if (req.file) {
+                try {
+                    const uploadResult = await uploadToCloudinary(req.file);
+                    updateData.photo = uploadResult.secure_url;
+                    updateData.photoPublicId = uploadResult.public_id;
+                    photoPublicId = uploadResult.public_id;
+                } catch (uploadError) {
+                    console.error('Cloudinary upload error:', uploadError);
+                    res.status(500).json({ message: 'Failed to upload photo' });
+                    return;
+                }
+            }
+
+            const driver = await Driver.findById(req.params.id).select('-password');
+            if (!driver) {
+                if (req.file && photoPublicId) {
+                    try {
+                        await deleteFromCloudinary(photoPublicId);
+                    } catch (deleteError) {
+                        console.error('Error cleaning up Cloudinary image:', deleteError);
+                    }
+                }
+                res.status(404).json({ message: 'Driver not found' });
+                return;
+            }
+
+            if (req.file && driver.photoPublicId) {
+                try {
+                    await deleteFromCloudinary(driver.photoPublicId);
+                } catch (deleteError) {
+                    console.error('Error deleting old Cloudinary image:', deleteError);
+                }
+            }
+
+            const updatedDriver = await Driver.findByIdAndUpdate(
                 req.params.id,
-                { fullName, phoneNumber, email, vehicleNumber, vehicleType },
+                updateData,
                 { new: true, runValidators: true }
             ).select('-password');
 
-            if (!driver) {
+            if (!updatedDriver) {
+                if (req.file && photoPublicId) {
+                    try {
+                        await deleteFromCloudinary(photoPublicId);
+                    } catch (deleteError) {
+                        console.error('Error cleaning up Cloudinary image:', deleteError);
+                    }
+                }
                 res.status(404).json({ message: 'Driver not found' });
                 return;
             }
@@ -73,41 +118,48 @@ export const updateUser = async (req: Request, res: Response): Promise<void> => 
             res.json({
                 message: 'Driver updated successfully',
                 user: {
-                    id: driver._id,
-                    fullName: driver.fullName,
-                    email: driver.email,
-                    phoneNumber: driver.phoneNumber,
-                    vehicleNumber: driver.vehicleNumber,
-                    vehicleType: driver.vehicleType,
-                    photo: driver.photo,
+                    id: updatedDriver._id,
+                    fullName: updatedDriver.fullName,
+                    email: updatedDriver.email,
+                    phoneNumber: updatedDriver.phoneNumber,
+                    vehicleNumber: updatedDriver.vehicleNumber,
+                    vehicleType: updatedDriver.vehicleType,
+                    photo: updatedDriver.photo,
                     role: 'driver'
                 }
             });
         } else {
-            const user = await User.findByIdAndUpdate(
+            const router = await Router.findByIdAndUpdate(
                 req.params.id,
                 { fullName, phoneNumber, email },
                 { new: true, runValidators: true }
             ).select('-password');
 
-            if (!user) {
-                res.status(404).json({ message: 'User not found' });
+            if (!router) {
+                res.status(404).json({ message: 'Router not found' });
                 return;
             }
 
             res.json({
-                message: 'User updated successfully',
+                message: 'Router updated successfully',
                 user: {
-                    id: user._id,
-                    fullName: user.fullName,
-                    email: user.email,
-                    phoneNumber: user.phoneNumber,
-                    role: 'user'
+                    id: router._id,
+                    fullName: router.fullName,
+                    email: router.email,
+                    phoneNumber: router.phoneNumber,
+                    role: 'router'
                 }
             });
         }
     } catch (error) {
         console.error('Update user/driver error:', error);
+        if (req.file && photoPublicId) {
+            try {
+                await deleteFromCloudinary(photoPublicId);
+            } catch (deleteError) {
+                console.error('Error cleaning up Cloudinary image:', deleteError);
+            }
+        }
         res.status(500).json({ message: 'Internal server error' });
     }
 };
@@ -115,7 +167,7 @@ export const updateUser = async (req: Request, res: Response): Promise<void> => 
 
 export const deleteUser = async (req: Request, res: Response): Promise<void> => {
     try {
-        const user = await User.findByIdAndDelete(req.params.id);
+        const user = await Router.findByIdAndDelete(req.params.id);
         if (!user) {
             res.status(404).json({ message: 'User not found' });
             return;
@@ -152,23 +204,23 @@ export const changeUserPassword = async (req: Request, res: Response): Promise<v
 
             res.json({ message: 'Driver password updated successfully' });
         } else {
-            const user = await User.findById(id);
-            if (!user) {
-                res.status(404).json({ message: 'User not found' });
+            const router = await Router.findById(id);
+            if (!router) {
+                res.status(404).json({ message: 'Router not found' });
                 return;
             }
 
-            const isPasswordValid = await comparePassword(currentPassword, user.password);
+            const isPasswordValid = await comparePassword(currentPassword, router.password);
             if (!isPasswordValid) {
                 res.status(400).json({ message: 'Current password is incorrect' });
                 return;
             }
 
             const hashedPassword = await hashPassword(newPassword);
-            user.password = hashedPassword;
-            await user.save();
+            router.password = hashedPassword;
+            await router.save();
 
-            res.json({ message: 'User password updated successfully' });
+            res.json({ message: 'Router password updated successfully' });
         }
     } catch (error) {
         console.error('Change password error:', error);

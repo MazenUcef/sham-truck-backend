@@ -1,9 +1,8 @@
-import mongoose, { Document, Schema } from 'mongoose';
-import { User as UserInterface } from '../types';
+import mongoose, { Schema } from 'mongoose';
 
 
 
-const userSchema = new Schema(
+const routerSchema = new Schema(
   {
     fullName: {
       type: String,
@@ -24,6 +23,7 @@ const userSchema = new Schema(
     phoneNumber: {
       type: String,
       required: true,
+      unique: true,
     },
   },
   {
@@ -31,4 +31,4 @@ const userSchema = new Schema(
   }
 );
 
-export default mongoose.model('User', userSchema);
+export default mongoose.model('Router', routerSchema);

@@ -1,24 +1,33 @@
 import { Request, Response } from "express";
 import { Driver as DriverInterface, User as UserInterface } from "../types";
-import User from "../models/User";
 import { comparePassword, hashPassword } from "../utils/password";
 import { generateToken } from "../utils/token";
 import Driver from "../models/Driver";
 import { deleteFromCloudinary, uploadToCloudinary } from "../utils/cloudinary";
+import Router from "../models/Router";
+import Vehicle from "../models/Vehicle";
 
 
-export const signUpUser = async (req: Request, res: Response): Promise<void> => {
+export const signUpRouter = async (req: Request, res: Response): Promise<void> => {
     try {
         const { fullName, email, password, phoneNumber }: UserInterface = req.body;
-        const existingUser = await User.findOne({ email });
+        const existingRouter = await Router.findOne({ email });
         const existingDriver = await Driver.findOne({ email });
 
-        if (existingUser || existingDriver) {
+        const existingPhoneNumberRouter = await Router.findOne({ phoneNumber });
+        const existingPhoneNumberDriver = await Driver.findOne({ phoneNumber });
+
+        if (existingRouter || existingDriver) {
             res.status(400).json({ message: 'Email already exists' });
             return;
         }
+
+        if (existingPhoneNumberRouter || existingPhoneNumberDriver) {
+            res.status(400).json({ message: 'Phone number already exists' });
+            return;
+        }
         const hashedPassword = await hashPassword(password);
-        const user = await User.create({
+        const user = await Router.create({
             fullName,
             email,
             password: hashedPassword,
@@ -26,7 +35,7 @@ export const signUpUser = async (req: Request, res: Response): Promise<void> => 
         })
         const token = generateToken({
             id: user._id.toString(),
-            role: 'user',
+            role: 'router',
             fullName: user.fullName
         });
         res.status(201).json({
@@ -49,15 +58,22 @@ export const signUpUser = async (req: Request, res: Response): Promise<void> => 
 export const signUpDriver = async (req: Request, res: Response): Promise<void> => {
     let photoPublicId = '';
     try {
-        const { fullName, email, password, phoneNumber, vehicleNumber, vehicleType }: DriverInterface = req.body;
+        const { fullName, email, password, phoneNumber, vehicleNumber, vehicleTypeId }: DriverInterface = req.body;
         let photo = '';
-        const existingUser = await User.findOne({ email });
+        const existingUser = await Router.findOne({ email });
         const existingDriver = await Driver.findOne({ email });
 
         if (existingUser || existingDriver) {
             res.status(400).json({ message: 'Email already exists' });
             return;
         }
+
+        const vehicleType = await Vehicle.findById(vehicleTypeId);
+        if (!vehicleType) {
+            res.status(400).json({ message: 'Invalid vehicle type ID' });
+            return;
+        }
+
         if (req.file) {
             try {
                 const uploadResult = await uploadToCloudinary(req.file);
@@ -78,7 +94,7 @@ export const signUpDriver = async (req: Request, res: Response): Promise<void> =
             photo,
             photoPublicId,
             vehicleNumber,
-            vehicleType,
+            vehicleType: vehicleTypeId,
         });
         const token = generateToken({
             id: driver._id.toString(),
@@ -94,7 +110,7 @@ export const signUpDriver = async (req: Request, res: Response): Promise<void> =
                 email: driver.email,
                 phoneNumber: driver.phoneNumber,
                 vehicleNumber: driver.vehicleNumber,
-                vehicleType: driver.vehicleType,
+                vehicleType: vehicleType,
                 photo: driver.photo,
             },
         });
@@ -117,26 +133,33 @@ export const signIn = async (req: Request, res: Response): Promise<void> => {
         const { email, password, role } = req.body;
 
         let user;
-        if (role === 'driver') {
-            user = await Driver.findOne({ email });
+        let vehicleType = null;
 
+        if (role === 'driver') {
+            user = await Driver.findOne({ email }).select('fullName email phoneNumber vehicleType vehicleNumber photo');
             if (!user) {
-                const userAccount = await User.findOne({ email });
-                if (userAccount) {
+                const routerAccount = await Router.findOne({ email });
+                if (routerAccount) {
                     res.status(400).json({
-                        message: 'Email is registered as a user, not a driver. Please login as a user.'
+                        message: 'Email is registered as a router, not a driver. Please login as a router.'
                     });
+                    return;
+                }
+            } else {
+                // Fetch the full vehicle type for the driver
+                vehicleType = await Vehicle.findById(user.vehicleType);
+                if (!vehicleType) {
+                    res.status(400).json({ message: 'Driver vehicle type not found' });
                     return;
                 }
             }
         } else {
-            user = await User.findOne({ email });
-
+            user = await Router.findOne({ email }).select('fullName email phoneNumber');
             if (!user) {
                 const driverAccount = await Driver.findOne({ email });
                 if (driverAccount) {
                     res.status(400).json({
-                        message: 'Email is registered as a driver, not a user. Please login as a driver.'
+                        message: 'Email is registered as a driver, not a router. Please login as a driver.'
                     });
                     return;
                 }
@@ -148,7 +171,17 @@ export const signIn = async (req: Request, res: Response): Promise<void> => {
             return;
         }
 
-        const isPasswordValid = await comparePassword(password, user.password);
+        // Fetch user with password for comparison
+        const userWithPassword = role === 'driver'
+            ? await Driver.findOne({ email }).select('password')
+            : await Router.findOne({ email }).select('password');
+        
+        if (!userWithPassword) {
+            res.status(400).json({ message: 'Invalid credentials - no account found with this email' });
+            return;
+        }
+
+        const isPasswordValid = await comparePassword(password, userWithPassword.password);
         if (!isPasswordValid) {
             res.status(400).json({ message: 'Invalid credentials - incorrect password' });
             return;
@@ -156,7 +189,7 @@ export const signIn = async (req: Request, res: Response): Promise<void> => {
 
         const token = generateToken({
             id: user._id.toString(),
-            role: role as 'user' | 'driver',
+            role: role as 'router' | 'driver',
             fullName: user.fullName
         });
 
@@ -171,7 +204,7 @@ export const signIn = async (req: Request, res: Response): Promise<void> => {
                 role,
                 ...(role === 'driver' && {
                     vehicleNumber: (user as any).vehicleNumber,
-                    vehicleType: (user as any).vehicleType,
+                    vehicleType: vehicleType,
                     photo: (user as any).photo,
                 }),
             },
@@ -180,4 +213,4 @@ export const signIn = async (req: Request, res: Response): Promise<void> => {
         console.error('Login error:', error);
         res.status(500).json({ message: 'Internal server error' });
     }
-}
+};

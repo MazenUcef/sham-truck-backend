@@ -1,14 +1,13 @@
-import mongoose, { Document, Schema } from 'mongoose';
-import { VehicleType as VehicleTypeInterface } from '../types';
+import mongoose, { Schema } from 'mongoose';
 
 
-const vehicleTypeSchema = new Schema(
+const VehicleSchema = new Schema(
   {
-    type: {
+    category: {
       type: String,
       required: true,
     },
-    description: {
+    type: {
       type: String,
     },
     image: {
@@ -25,4 +24,4 @@ const vehicleTypeSchema = new Schema(
   }
 );
 
-export default mongoose.model('VehicleType', vehicleTypeSchema);
+export default mongoose.model('Vehicle', VehicleSchema);
