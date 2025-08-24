@@ -130,25 +130,46 @@ export const deleteUser = async (req: Request, res: Response): Promise<void> => 
 
 export const changeUserPassword = async (req: Request, res: Response): Promise<void> => {
     try {
-        const { currentPassword, newPassword } = req.body;
-        const user = await User.findById(req.params.id);
+        const { currentPassword, newPassword, role } = req.body;
+        const { id } = req.params;
 
-        if (!user) {
-            res.status(404).json({ message: 'User not found' });
-            return;
+        if (role === 'driver') {
+            const driver = await Driver.findById(id);
+            if (!driver) {
+                res.status(404).json({ message: 'Driver not found' });
+                return;
+            }
+
+            const isPasswordValid = await comparePassword(currentPassword, driver.password);
+            if (!isPasswordValid) {
+                res.status(400).json({ message: 'Current password is incorrect' });
+                return;
+            }
+
+            const hashedPassword = await hashPassword(newPassword);
+            driver.password = hashedPassword;
+            await driver.save();
+
+            res.json({ message: 'Driver password updated successfully' });
+        } else {
+            const user = await User.findById(id);
+            if (!user) {
+                res.status(404).json({ message: 'User not found' });
+                return;
+            }
+
+            const isPasswordValid = await comparePassword(currentPassword, user.password);
+            if (!isPasswordValid) {
+                res.status(400).json({ message: 'Current password is incorrect' });
+                return;
+            }
+
+            const hashedPassword = await hashPassword(newPassword);
+            user.password = hashedPassword;
+            await user.save();
+
+            res.json({ message: 'User password updated successfully' });
         }
-
-        const isPasswordValid = await comparePassword(currentPassword, user.password);
-        if (!isPasswordValid) {
-            res.status(400).json({ message: 'Current password is incorrect' });
-            return;
-        }
-
-        const hashedPassword = await hashPassword(newPassword);
-        user.password = hashedPassword;
-        await user.save();
-
-        res.json({ message: 'Password updated successfully' });
     } catch (error) {
         console.error('Change password error:', error);
         res.status(500).json({ message: 'Internal server error' });
