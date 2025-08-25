@@ -56,112 +56,164 @@ export const getUserById = async (req: Request, res: Response): Promise<void> =>
 };
 
 export const updateUser = async (req: Request, res: Response): Promise<void> => {
-    let photoPublicId = '';
-    try {
-        const { fullName, phoneNumber, email, vehicleNumber, vehicleType, role } = req.body;
+  let photoPublicId = '';
+  try {
+    const { fullName, phoneNumber, email, vehicleNumber, vehicleType, role } = req.body;
+    const { id } = req.params;
 
-        if (role === 'driver') {
-            const updateData: any = { fullName, phoneNumber, email, vehicleNumber, vehicleType };
-
-            if (req.file) {
-                try {
-                    const uploadResult = await uploadToCloudinary(req.file);
-                    updateData.photo = uploadResult.secure_url;
-                    updateData.photoPublicId = uploadResult.public_id;
-                    photoPublicId = uploadResult.public_id;
-                } catch (uploadError) {
-                    console.error('Cloudinary upload error:', uploadError);
-                    res.status(500).json({ message: 'Failed to upload photo' });
-                    return;
-                }
-            }
-
-            const driver = await Driver.findById(req.params.id).select('-password');
-            if (!driver) {
-                if (req.file && photoPublicId) {
-                    try {
-                        await deleteFromCloudinary(photoPublicId);
-                    } catch (deleteError) {
-                        console.error('Error cleaning up Cloudinary image:', deleteError);
-                    }
-                }
-                res.status(404).json({ message: 'Driver not found' });
-                return;
-            }
-
-            if (req.file && driver.photoPublicId) {
-                try {
-                    await deleteFromCloudinary(driver.photoPublicId);
-                } catch (deleteError) {
-                    console.error('Error deleting old Cloudinary image:', deleteError);
-                }
-            }
-
-            const updatedDriver = await Driver.findByIdAndUpdate(
-                req.params.id,
-                updateData,
-                { new: true, runValidators: true }
-            ).select('-password');
-
-            if (!updatedDriver) {
-                if (req.file && photoPublicId) {
-                    try {
-                        await deleteFromCloudinary(photoPublicId);
-                    } catch (deleteError) {
-                        console.error('Error cleaning up Cloudinary image:', deleteError);
-                    }
-                }
-                res.status(404).json({ message: 'Driver not found' });
-                return;
-            }
-
-            res.json({
-                message: 'Driver updated successfully',
-                user: {
-                    id: updatedDriver._id,
-                    fullName: updatedDriver.fullName,
-                    email: updatedDriver.email,
-                    phoneNumber: updatedDriver.phoneNumber,
-                    vehicleNumber: updatedDriver.vehicleNumber,
-                    vehicleType: updatedDriver.vehicleType,
-                    photo: updatedDriver.photo,
-                    role: 'driver'
-                }
-            });
-        } else {
-            const router = await Router.findByIdAndUpdate(
-                req.params.id,
-                { fullName, phoneNumber, email },
-                { new: true, runValidators: true }
-            ).select('-password');
-
-            if (!router) {
-                res.status(404).json({ message: 'Router not found' });
-                return;
-            }
-
-            res.json({
-                message: 'Router updated successfully',
-                user: {
-                    id: router._id,
-                    fullName: router.fullName,
-                    email: router.email,
-                    phoneNumber: router.phoneNumber,
-                    role: 'router'
-                }
-            });
-        }
-    } catch (error) {
-        console.error('Update user/driver error:', error);
-        if (req.file && photoPublicId) {
+    // Validate email and phone number for duplicates
+    if (role === 'driver') {
+      // Check for duplicate email
+      if (email) {
+        const existingDriverByEmail = await Driver.findOne({ email, _id: { $ne: id } });
+        if (existingDriverByEmail) {
+          if (req.file && photoPublicId) {
             try {
-                await deleteFromCloudinary(photoPublicId);
+              await deleteFromCloudinary(photoPublicId);
             } catch (deleteError) {
-                console.error('Error cleaning up Cloudinary image:', deleteError);
+              console.error('Error cleaning up Cloudinary image:', deleteError);
             }
+          }
+          res.status(400).json({ message: 'Email is already in use' });
+          return;
         }
-        res.status(500).json({ message: 'Internal server error' });
+      }
+
+      // Check for duplicate phone number
+      if (phoneNumber) {
+        const existingDriverByPhone = await Driver.findOne({ phoneNumber, _id: { $ne: id } });
+        if (existingDriverByPhone) {
+          if (req.file && photoPublicId) {
+            try {
+              await deleteFromCloudinary(photoPublicId);
+            } catch (deleteError) {
+              console.error('Error cleaning up Cloudinary image:', deleteError);
+            }
+          }
+          res.status(400).json({ message: 'Phone number is already in use' });
+          return;
+        }
+      }
+
+      const updateData: any = { fullName, phoneNumber, email, vehicleNumber, vehicleType };
+
+      if (req.file) {
+        try {
+          const uploadResult = await uploadToCloudinary(req.file);
+          updateData.photo = uploadResult.secure_url;
+          updateData.photoPublicId = uploadResult.public_id;
+          photoPublicId = uploadResult.public_id;
+        } catch (uploadError) {
+          console.error('Cloudinary upload error:', uploadError);
+          res.status(500).json({ message: 'Failed to upload photo' });
+          return;
+        }
+      }
+
+      const driver = await Driver.findById(id).select('-password');
+      if (!driver) {
+        if (req.file && photoPublicId) {
+          try {
+            await deleteFromCloudinary(photoPublicId);
+          } catch (deleteError) {
+            console.error('Error cleaning up Cloudinary image:', deleteError);
+          }
+        }
+        res.status(404).json({ message: 'Driver not found' });
+        return;
+      }
+
+      if (req.file && driver.photoPublicId) {
+        try {
+          await deleteFromCloudinary(driver.photoPublicId);
+        } catch (deleteError) {
+          console.error('Error deleting old Cloudinary image:', deleteError);
+        }
+      }
+
+      const updatedDriver = await Driver.findByIdAndUpdate(
+        id,
+        updateData,
+        { new: true, runValidators: true }
+      ).select('-password');
+
+      if (!updatedDriver) {
+        if (req.file && photoPublicId) {
+          try {
+            await deleteFromCloudinary(photoPublicId);
+          } catch (deleteError) {
+            console.error('Error cleaning up Cloudinary image:', deleteError);
+          }
+        }
+        res.status(404).json({ message: 'Driver not found' });
+        return;
+      }
+
+      res.json({
+        message: 'Driver updated successfully',
+        user: {
+          id: updatedDriver._id,
+          fullName: updatedDriver.fullName,
+          email: updatedDriver.email,
+          phoneNumber: updatedDriver.phoneNumber,
+          vehicleNumber: updatedDriver.vehicleNumber,
+          vehicleType: updatedDriver.vehicleType,
+          photo: updatedDriver.photo,
+          role: 'driver',
+        },
+      });
+    } else {
+      // Check for duplicate email
+      if (email) {
+        const existingRouterByEmail = await Router.findOne({ email, _id: { $ne: id } });
+        if (existingRouterByEmail) {
+          res.status(400).json({ message: 'Email is already in use' });
+          return;
+        }
+      }
+
+      // Check for duplicate phone number
+      if (phoneNumber) {
+        const existingRouterByPhone = await Router.findOne({ phoneNumber, _id: { $ne: id } });
+        if (existingRouterByPhone) {
+          res.status(400).json({ message: 'Phone number is already in use' });
+          return;
+        }
+      }
+
+      const router = await Router.findByIdAndUpdate(
+        id,
+        { fullName, phoneNumber, email },
+        { new: true, runValidators: true }
+      ).select('-password');
+
+      if (!router) {
+        res.status(404).json({ message: 'Router not found' });
+        return;
+      }
+
+      res.json({
+        message: 'Router updated successfully',
+        user: {
+          id: router._id,
+          fullName: router.fullName,
+          email: router.email,
+          phoneNumber: router.phoneNumber,
+          role: 'router',
+        },
+      });
     }
+  } catch (error) {
+    console.error('Update user/driver error:', error);
+    if (req.file && photoPublicId) {
+      try {
+        await deleteFromCloudinary(photoPublicId);
+      } catch (deleteError) {
+        console.error('Error cleaning up Cloudinary image:', deleteError);
+      }
+    }
+    res.status(500).json({ message: 'Internal server error' });
+  }
 };
 
 
