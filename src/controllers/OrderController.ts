@@ -18,7 +18,8 @@ export const createOrder = async (req: AuthRequest, res: Response): Promise<void
             weight_or_volume,
             date_time_transport,
             loading_time,
-            notes
+            notes,
+            type
         } = req.body;
 
         if (!mongoose.Types.ObjectId.isValid(vehicle_type)) {
@@ -41,6 +42,7 @@ export const createOrder = async (req: AuthRequest, res: Response): Promise<void
             date_time_transport,
             loading_time,
             notes,
+            type,
             status: 'Pending'
         });
 
@@ -97,11 +99,11 @@ export const getOrders = async (req: AuthRequest, res: Response): Promise<void> 
                 return;
             }
 
-            // Find orders where vehicle_type's category matches the driver's vehicle category
+
             orders = await Order.aggregate([
                 {
                     $lookup: {
-                        from: 'vehicles', // MongoDB collection name for Vehicle model
+                        from: 'vehicles',
                         localField: 'vehicle_type',
                         foreignField: '_id',
                         as: 'vehicle_type_data'
@@ -118,7 +120,7 @@ export const getOrders = async (req: AuthRequest, res: Response): Promise<void> 
                 },
                 {
                     $lookup: {
-                        from: 'routers', // MongoDB collection name for Router (User) model
+                        from: 'routers',
                         localField: 'customer_id',
                         foreignField: '_id',
                         as: 'customer_id'
@@ -152,6 +154,7 @@ export const getOrders = async (req: AuthRequest, res: Response): Promise<void> 
                         date_time_transport: 1,
                         loading_time: 1,
                         notes: 1,
+                        type: 1,
                         status: 1,
                         createdAt: 1,
                         updatedAt: 1
@@ -191,10 +194,11 @@ export const getOrders = async (req: AuthRequest, res: Response): Promise<void> 
                 }
             ]).then(result => result[0]?.total || 0);
         } else {
-            // For non-drivers (e.g., routers), return all orders
+
             orders = await Order.find(query)
                 .populate('customer_id', 'fullName email phoneNumber')
                 .populate('vehicle_type', 'category type image')
+                .select('from_location to_location weight_or_volume date_time_transport loading_time notes type status createdAt updatedAt')
                 .sort({ createdAt: -1 })
                 .limit(Number(limit) * 1)
                 .skip((Number(page) - 1) * Number(limit));

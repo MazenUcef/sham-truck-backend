@@ -10,6 +10,7 @@ export interface IOrder extends Document {
   date_time_transport: Date;
   loading_time: string;
   notes?: string;
+  type?: string;
   status: 'Active' | 'Ended' | 'Pending';
   createdAt: Date;
   updatedAt: Date;
@@ -44,6 +45,10 @@ const orderSchema = new Schema<IOrder>(
       required: true,
     },
     loading_time: {
+      type: String,
+      required: true,
+    },
+    type: {
       type: String,
       required: true,
     },
