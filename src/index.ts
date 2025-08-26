@@ -13,8 +13,6 @@ import morgan from 'morgan';
 
 import authRoutes from './routes/auth';
 import vehicleRoutes from './routes/vehicel';
-import userRoutes from './routes/user';
-import driverRoutes from './routes/driver';
 import connectDB from './config/database';
 import orderRoutes from './routes/order';
 import offerRoutes from './routes/offer';
@@ -40,10 +38,15 @@ app.use(helmet());
 
 
 app.use(cors({
-  origin: '*',
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+    origin: '*',
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    allowedHeaders: ['Content-Type', 'Authorization']
 }));
+
+app.use((req: any, res: any, next: any) => {
+    req.io = io;
+    next();
+});
 
 
 
@@ -72,8 +75,6 @@ app.get('/health', (req, res) => {
 
 app.use('/api/auth', authRoutes);
 app.use('/api/vehicle', vehicleRoutes);
-app.use('/api/user', userRoutes);
-app.use('/api/driver', driverRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/offers', offerRoutes);
 app.use('/api/notifications', notificationRoutes);
@@ -113,6 +114,46 @@ io.on('connection', (socket) => {
             socket.join(`driver-${userId}`);
             console.log(`Driver ${userId} joined notification room`);
         }
+    });
+
+    socket.on('subscribe-driver-offers', (driverId: string) => {
+        socket.join(`driver-offers-${driverId}`);
+        console.log(`Driver ${driverId} subscribed to offers updates`);
+    });
+
+    socket.on('unsubscribe-driver-offers', (driverId: string) => {
+        socket.leave(`driver-offers-${driverId}`);
+        console.log(`Driver ${driverId} unsubscribed from offers updates`);
+    });
+
+    socket.on('subscribe-order-offers', (orderId: string) => {
+        socket.join(`order-offers-${orderId}`);
+        console.log(`Socket ${socket.id} subscribed to order ${orderId} offers`);
+    });
+
+    socket.on('unsubscribe-order-offers', (orderId: string) => {
+        socket.leave(`order-offers-${orderId}`);
+        console.log(`Socket ${socket.id} unsubscribed from order ${orderId} offers`);
+    });
+
+    socket.on('subscribe-router-orders', (routerId: string) => {
+        socket.join(`router-orders-${routerId}`);
+        console.log(`Router ${routerId} subscribed to orders updates`);
+    });
+
+    socket.on('unsubscribe-router-orders', (routerId: string) => {
+        socket.leave(`router-orders-${routerId}`);
+        console.log(`Router ${routerId} unsubscribed from orders updates`);
+    });
+
+    socket.on('subscribe-driver-orders', (driverId: string) => {
+        socket.join(`driver-orders-${driverId}`);
+        console.log(`Driver ${driverId} subscribed to available orders`);
+    });
+
+    socket.on('unsubscribe-driver-orders', (driverId: string) => {
+        socket.leave(`driver-orders-${driverId}`);
+        console.log(`Driver ${driverId} unsubscribed from available orders`);
     });
 
     socket.on('ring-answered', (data: { ringId: string; answered: boolean }) => {

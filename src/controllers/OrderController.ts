@@ -1,16 +1,60 @@
 import { Request, Response } from 'express';
-import Order from '../models/Order';
-import Offer from '../models/Offer';
-import { Socket } from 'socket.io';
-import { AuthRequest } from '../types';
+import { body, validationResult } from 'express-validator';
 import mongoose from 'mongoose';
-import VehicleType from '../models/Vehicle';
-import { createNotification, notificationTemplates } from '../utils/notifications';
-import Driver from '../models/Driver';
+import Order from '../models/Order';
 import Vehicle from '../models/Vehicle';
+import Driver from '../models/Driver';
+import { Server as SocketIOServer } from 'socket.io';
+import Notification from '../models/Notification';
 
-export const createOrder = async (req: AuthRequest, res: Response): Promise<void> => {
+interface AuthenticatedRequest extends Request {
+    user?: {
+        id: string;
+        role: string;
+        fullName: string;
+    };
+    io?: SocketIOServer;
+}
+
+interface OrderCreateData {
+    from_location: string;
+    to_location: string;
+    vehicle_type: string;
+    weight_or_volume: string;
+    date_time_transport: Date;
+    loading_time: string;
+    notes?: string;
+    type: string;
+}
+
+export const validateOrderCreate = [
+    body('from_location').trim().notEmpty().withMessage('From location is required'),
+    body('to_location').trim().notEmpty().withMessage('To location is required'),
+    body('vehicle_type').isMongoId().withMessage('Invalid vehicle type ID'),
+    body('weight_or_volume').trim().notEmpty().withMessage('Weight or volume is required'),
+    body('date_time_transport')
+        .isISO8601()
+        .toDate()
+        .withMessage('Invalid date and time for transport'),
+    body('loading_time').trim().notEmpty().withMessage('Loading time is required'),
+    body('type').trim().notEmpty().withMessage('Order type is required'),
+    body('notes').optional().trim(),
+];
+
+export const createOrder = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            res.status(400).json({ errors: errors.array() });
+            return;
+        }
+
+        const { id, role } = req.user!;
+        if (role !== 'router') {
+            res.status(403).json({ message: 'Unauthorized: Only routers can create orders' });
+            return;
+        }
+
         const {
             from_location,
             to_location,
@@ -19,22 +63,17 @@ export const createOrder = async (req: AuthRequest, res: Response): Promise<void
             date_time_transport,
             loading_time,
             notes,
-            type
-        } = req.body;
+            type,
+        }: OrderCreateData = req.body;
 
-        if (!mongoose.Types.ObjectId.isValid(vehicle_type)) {
+        const vehicleType = await Vehicle.findById(vehicle_type);
+        if (!vehicleType) {
             res.status(400).json({ message: 'Invalid vehicle type ID' });
             return;
         }
 
-        const vehicleType = await VehicleType.findById(vehicle_type);
-        if (!vehicleType) {
-            res.status(400).json({ message: 'Vehicle type not found' });
-            return;
-        }
-
         const order = await Order.create({
-            customer_id: req.user?.id,
+            customer_id: id,
             from_location,
             to_location,
             vehicle_type,
@@ -43,256 +82,248 @@ export const createOrder = async (req: AuthRequest, res: Response): Promise<void
             loading_time,
             notes,
             type,
-            status: 'Pending'
+            status: 'Pending',
         });
 
+
+        if (req.io) {
+            req.io.emit('new-order-available', {
+                order: {
+                    id: order._id,
+                    from_location: order.from_location,
+                    to_location: order.to_location,
+                    vehicle_type: order.vehicle_type,
+                    weight_or_volume: order.weight_or_volume,
+                    date_time_transport: order.date_time_transport,
+                    loading_time: order.loading_time,
+                    notes: order.notes,
+                    type: order.type,
+                    status: order.status,
+                }
+            })
+        }
+
+
         const populatedOrder = await Order.findById(order._id)
-            .populate('customer_id', 'fullName email phoneNumber')
-            .populate('vehicle_type', 'category type image');
+            .populate('vehicle_type')
+            .populate({
+                path: 'customer_id',
+                select: '-password'
+            });
 
 
-        const io = req.app.get('io');
-        io.emit('new-order', populatedOrder);
+        // Create notification for order creation
+        await Notification.create({
+            user_id: id, // The router who created the order
+            order_id: order._id,
+            type: 'order_created',
+            title: 'Order Created',
+            message: 'Your order has been created successfully',
+            is_read: false,
+        });
 
-        const orderNotificationData = {
-            order_id: order._id.toString(),
-            ...notificationTemplates.orderCreated(
-                `${req.user?.fullName || 'A customer'}`
-            ),
-            metadata: { order_id: order._id }
-        };
+        // Emit Socket.IO event for new order creation
+        if (req.io) {
+            // Notify all drivers about the new order
+            req.io.emit('new-order', {
+                message: 'New order available',
+                order: populatedOrder
+            });
 
-        await createNotification(orderNotificationData);
+            // Notify the specific router who created the order
+            req.io.to(`user-${id}`).emit('order-created', {
+                message: 'Your order has been created successfully',
+                order: populatedOrder
+            });
+
+            // Emit notification event
+            req.io.to(`user-${id}`).emit('new-notification', {
+                title: 'Order Created',
+                message: 'Your order has been created successfully'
+            });
+        }
 
         res.status(201).json({
             message: 'Order created successfully',
-            order: populatedOrder
+            order: {
+                id: populatedOrder!._id,
+                customer: populatedOrder!.customer_id, // Now contains full router info
+                from_location: populatedOrder!.from_location,
+                to_location: populatedOrder!.to_location,
+                vehicle_type: populatedOrder!.vehicle_type,
+                weight_or_volume: populatedOrder!.weight_or_volume,
+                date_time_transport: populatedOrder!.date_time_transport,
+                loading_time: populatedOrder!.loading_time,
+                notes: populatedOrder!.notes,
+                type: populatedOrder!.type,
+                status: populatedOrder!.status,
+                createdAt: populatedOrder!.createdAt,
+                updatedAt: populatedOrder!.updatedAt,
+            },
         });
-    } catch (error) {
-        console.error('Create order error:', error);
-        res.status(500).json({ message: 'Internal server error' });
+    } catch (error: any) {
+        res.status(500).json({
+            message: 'Error creating order',
+            error: error.message,
+        });
     }
 };
 
-export const getOrders = async (req: AuthRequest, res: Response): Promise<void> => {
+export const getRouterOrders = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
-        const { status, page = 1, limit = 10 } = req.query;
-        const query: any = {};
-
-        if (status) {
-            query.status = status;
+        const { id, role } = req.user!;
+        if (role !== 'router') {
+            res.status(403).json({ message: 'Unauthorized: Only routers can access their orders' });
+            return;
         }
 
-        let orders;
-        let total;
+        const orders = await Order.find({ customer_id: id })
+            .populate('vehicle_type')
+            .populate({
+                path: 'customer_id',
+                select: '-password'
+            });
 
-        if (req.user?.role === 'driver') {
-            const driver = await Driver.findById(req.user.id).select('vehicleType');
-            if (!driver) {
-                res.status(404).json({ message: 'Driver not found' });
-                return;
-            }
-
-            const driverVehicle = await Vehicle.findById(driver.vehicleType).select('category');
-            if (!driverVehicle) {
-                res.status(400).json({ message: 'Driver vehicle type not found' });
-                return;
-            }
-
-
-            orders = await Order.aggregate([
-                {
-                    $lookup: {
-                        from: 'vehicles',
-                        localField: 'vehicle_type',
-                        foreignField: '_id',
-                        as: 'vehicle_type_data'
-                    }
-                },
-                {
-                    $unwind: '$vehicle_type_data'
-                },
-                {
-                    $match: {
-                        'vehicle_type_data.category': driverVehicle.category,
-                        ...query
-                    }
-                },
-                {
-                    $lookup: {
-                        from: 'routers',
-                        localField: 'customer_id',
-                        foreignField: '_id',
-                        as: 'customer_id'
-                    }
-                },
-                {
-                    $unwind: '$customer_id'
-                },
-                {
-                    $lookup: {
-                        from: 'vehicles',
-                        localField: 'vehicle_type',
-                        foreignField: '_id',
-                        as: 'vehicle_type'
-                    }
-                },
-                {
-                    $unwind: '$vehicle_type'
-                },
-                {
-                    $project: {
-                        'customer_id.fullName': 1,
-                        'customer_id.email': 1,
-                        'customer_id.phoneNumber': 1,
-                        'vehicle_type.category': 1,
-                        'vehicle_type.type': 1,
-                        'vehicle_type.image': 1,
-                        from_location: 1,
-                        to_location: 1,
-                        weight_or_volume: 1,
-                        date_time_transport: 1,
-                        loading_time: 1,
-                        notes: 1,
-                        type: 1,
-                        status: 1,
-                        createdAt: 1,
-                        updatedAt: 1
-                    }
-                },
-                {
-                    $sort: { createdAt: -1 }
-                },
-                {
-                    $skip: (Number(page) - 1) * Number(limit)
-                },
-                {
-                    $limit: Number(limit)
-                }
-            ]);
-
-            total = await Order.aggregate([
-                {
-                    $lookup: {
-                        from: 'vehicles',
-                        localField: 'vehicle_type',
-                        foreignField: '_id',
-                        as: 'vehicle_type_data'
-                    }
-                },
-                {
-                    $unwind: '$vehicle_type_data'
-                },
-                {
-                    $match: {
-                        'vehicle_type_data.category': driverVehicle.category,
-                        ...query
-                    }
-                },
-                {
-                    $count: 'total'
-                }
-            ]).then(result => result[0]?.total || 0);
-        } else {
-
-            orders = await Order.find(query)
-                .populate('customer_id', 'fullName email phoneNumber')
-                .populate('vehicle_type', 'category type image')
-                .select('from_location to_location weight_or_volume date_time_transport loading_time notes type status createdAt updatedAt')
-                .sort({ createdAt: -1 })
-                .limit(Number(limit) * 1)
-                .skip((Number(page) - 1) * Number(limit));
-
-            total = await Order.countDocuments(query);
+        if (req.io && req.headers['socket-id']) {
+            req.io.to(req.headers['socket-id']).emit('subscribe-router-orders', id);
         }
 
         res.json({
-            orders,
-            totalPages: Math.ceil(total / Number(limit)),
-            currentPage: Number(page),
-            total
+            message: 'Orders retrieved successfully',
+            orders: orders.map((order) => ({
+                id: order._id,
+                customer: order.customer_id,
+                from_location: order.from_location,
+                to_location: order.to_location,
+                vehicle_type: order.vehicle_type,
+                weight_or_volume: order.weight_or_volume,
+                date_time_transport: order.date_time_transport,
+                loading_time: order.loading_time,
+                notes: order.notes,
+                type: order.type,
+                status: order.status,
+                createdAt: order.createdAt,
+                updatedAt: order.updatedAt,
+            })),
         });
-    } catch (error) {
-        console.error('Get orders error:', error);
-        res.status(500).json({ message: 'Internal server error' });
+    } catch (error: any) {
+        res.status(500).json({
+            message: 'Error retrieving orders',
+            error: error.message,
+        });
     }
 };
 
-export const getOrderById = async (req: Request, res: Response): Promise<void> => {
+export const getOrderById = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
-        const order = await Order.findById(req.params.id)
-            .populate('customer_id', 'fullName email phoneNumber');
-
-        if (!order) {
-            res.status(404).json({ message: 'Order not found' });
+        const { id, role } = req.user!;
+        if (role !== 'router') {
+            res.status(403).json({ message: 'Unauthorized: Only routers can access their orders' });
             return;
         }
 
-        res.json(order);
-    } catch (error) {
-        console.error('Get order error:', error);
-        res.status(500).json({ message: 'Internal server error' });
-    }
-};
-
-export const updateOrder = async (req: Request, res: Response): Promise<void> => {
-    try {
-        const order = await Order.findByIdAndUpdate(
-            req.params.id,
-            req.body,
-            { new: true, runValidators: true }
-        ).populate('customer_id', 'fullName email phoneNumber');
-
-        if (!order) {
-            res.status(404).json({ message: 'Order not found' });
+        const orderId = req.params.id;
+        if (!mongoose.Types.ObjectId.isValid(orderId)) {
+            res.status(400).json({ message: 'Invalid order ID' });
             return;
         }
 
-        // Notify about order update
-        const io = req.app.get('io');
-        io.to(`order-${order._id}`).emit('order-updated', order);
+        const order = await Order.findOne({ _id: orderId, customer_id: id })
+            .populate('vehicle_type')
+            .populate({
+                path: 'customer_id',
+                select: '-password'
+            });
+
+        if (!order) {
+            res.status(404).json({ message: 'Order not found or you do not have access to this order' });
+            return;
+        }
 
         res.json({
-            message: 'Order updated successfully',
-            order
+            message: 'Order retrieved successfully',
+            order: {
+                id: order._id,
+                customer: order.customer_id,
+                from_location: order.from_location,
+                to_location: order.to_location,
+                vehicle_type: order.vehicle_type,
+                weight_or_volume: order.weight_or_volume,
+                date_time_transport: order.date_time_transport,
+                loading_time: order.loading_time,
+                notes: order.notes,
+                type: order.type,
+                status: order.status,
+                createdAt: order.createdAt,
+                updatedAt: order.updatedAt,
+            },
         });
-    } catch (error) {
-        console.error('Update order error:', error);
-        res.status(500).json({ message: 'Internal server error' });
+    } catch (error: any) {
+        res.status(500).json({
+            message: 'Error retrieving order',
+            error: error.message,
+        });
     }
 };
 
-export const deleteOrder = async (req: Request, res: Response): Promise<void> => {
+export const getDriverOrders = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
-        const order = await Order.findByIdAndDelete(req.params.id);
-
-        if (!order) {
-            res.status(404).json({ message: 'Order not found' });
+        const { id, role } = req.user!;
+        if (role !== 'driver') {
+            res.status(403).json({ message: 'Unauthorized: Only drivers can access orders' });
             return;
         }
 
-        await Offer.deleteMany({ order_id: req.params.id });
+        const driver = await Driver.findById(id);
+        if (!driver) {
+            res.status(404).json({ message: 'Driver not found' });
+            return;
+        }
 
-        const io = req.app.get('io');
-        io.to(`order-${req.params.id}`).emit('order-deleted', req.params.id);
+        const driverVehicleCategory = driver.vehicleType.category;
 
-        res.json({ message: 'Order deleted successfully' });
-    } catch (error) {
-        console.error('Delete order error:', error);
-        res.status(500).json({ message: 'Internal server error' });
-    }
-};
+        const orders = await Order.find({
+            status: 'Pending',
+        })
+            .populate({
+                path: 'vehicle_type',
+                match: { category: driverVehicleCategory },
+            })
+            .populate({
+                path: 'customer_id',
+                select: '-password'
+            })
+            .lean();
 
-export const getUserOrders = async (req: AuthRequest, res: Response): Promise<void> => {
-    try {
-        const orders = await Order.find({ customer_id: req.user?.id })
-            .populate('customer_id', 'fullName email phoneNumber')
-            .populate('vehicle_type', 'type category image')
-            .sort({ createdAt: -1 });
+        const filteredOrders = orders.filter((order) => order.vehicle_type !== null);
 
-        res.json(orders);
-    } catch (error) {
-        console.error('Get user orders error:', error);
-        res.status(500).json({ message: 'Internal server error' });
+        // Emit subscription event for real-time updates
+        if (req.io && req.headers['socket-id']) {
+            req.io.to(req.headers['socket-id']).emit('subscribe-driver-orders', id);
+        }
+
+        res.json({
+            message: 'Orders retrieved successfully',
+            orders: filteredOrders.map((order) => ({
+                id: order._id,
+                customer: order.customer_id, // Full router info
+                from_location: order.from_location,
+                to_location: order.to_location,
+                vehicle_type: order.vehicle_type,
+                weight_or_volume: order.weight_or_volume,
+                date_time_transport: order.date_time_transport,
+                loading_time: order.loading_time,
+                notes: order.notes,
+                type: order.type,
+                status: order.status,
+                createdAt: order.createdAt,
+                updatedAt: order.updatedAt,
+            })),
+        });
+    } catch (error: any) {
+        res.status(500).json({
+            message: 'Error retrieving orders',
+            error: error.message,
+        });
     }
 };

@@ -20,7 +20,7 @@ const orderSchema = new Schema<IOrder>(
   {
     customer_id: {
       type: Schema.Types.ObjectId,
-      ref: 'Router',
+      ref: 'User',
       required: true,
     },
     from_location: {

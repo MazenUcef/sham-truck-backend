@@ -1,12 +1,47 @@
 import { Request, Response } from 'express';
-import Offer from '../models/Offer';
+import { body, validationResult } from 'express-validator';
+import mongoose from 'mongoose';
+import Offer, { IOffer } from '../models/Offer';
 import Order from '../models/Order';
-import { AuthRequest } from '../types';
-import { createNotification, notificationTemplates } from '../utils/notifications';
+import { Server as SocketIOServer } from 'socket.io';
+import Notification from '../models/Notification';
 
-export const createOffer = async (req: AuthRequest, res: Response): Promise<void> => {
+interface AuthenticatedRequest extends Request {
+    user?: {
+        id: string;
+        role: string;
+        fullName: string;
+    };
+    io?: SocketIOServer;
+}
+
+interface OfferCreateData {
+    order_id: string;
+    price: number;
+    notes?: string;
+}
+
+export const validateOfferCreate = [
+    body('order_id').isMongoId().withMessage('Invalid order ID'),
+    body('price').isNumeric().withMessage('Price must be a number').isFloat({ min: 0 }).withMessage('Price must be positive'),
+    body('notes').optional().trim(),
+];
+
+export const createOffer = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
-        const { order_id, price, notes, type } = req.body;
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            res.status(400).json({ errors: errors.array() });
+            return;
+        }
+
+        const { id, role } = req.user!;
+        if (role !== 'driver') {
+            res.status(403).json({ message: 'Unauthorized: Only drivers can create offers' });
+            return;
+        }
+
+        const { order_id, price, notes }: OfferCreateData = req.body;
 
         const order = await Order.findById(order_id);
         if (!order) {
@@ -14,261 +49,295 @@ export const createOffer = async (req: AuthRequest, res: Response): Promise<void
             return;
         }
 
-        const existingOffer = await Offer.findOne({
-            order_id,
-            driver_id: req.user?.id
-        });
-
+        const existingOffer = await Offer.findOne({ order_id, driver_id: id });
         if (existingOffer) {
-            res.status(400).json({ message: 'You already made an offer for this order' });
+            res.status(400).json({ message: 'You already have an offer for this order' });
             return;
         }
 
         const offer = await Offer.create({
             order_id,
-            driver_id: req.user?.id,
+            driver_id: id,
             price,
             notes,
-            type,
-            status: 'Pending'
+            status: 'Pending',
         });
 
+        // Populate the offer with driver and order details
         const populatedOffer = await Offer.findById(offer._id)
-            .populate({
-                path: 'driver_id',
-                select: 'fullName email phoneNumber vehicleNumber vehicleType photo',
-                populate: {
-                    path: 'vehicleType',
-                    model: 'Vehicle',
-                    select: '_id category type image imagePublicId createdAt updatedAt __v'
-                }
-            })
+            .populate('driver_id')
             .populate('order_id');
 
-        const io = req.app.get('io');
-        io.to(`user-${order.customer_id}`).emit('new-offer', populatedOffer);
-        io.to(`order-${order_id}`).emit('offer-created', populatedOffer);
-
-        const notificationData = {
-            user_id: order.customer_id.toString(),
-            driver_id: req.user?.id,
+        // Create a notification in the database
+        await Notification.create({
+            user_id: order.customer_id, // The router who created the order
+            driver_id: id, // The driver who made the offer
             order_id: order_id,
-            ...notificationTemplates.newOffer(
-                `${req.user?.fullName || 'A driver'}`,
-                order_id
-            ),
-            metadata: { offer_id: offer._id, price: price }
-        };
+            type: 'new_offer',
+            title: 'New Offer Received',
+            message: `You have received a new offer of $${price} for your order`,
+            is_read: false,
+        });
 
-        await createNotification(notificationData);
+        // Emit Socket.IO events for new offer
+        if (req.io) {
+            // Notify the router about the new offer
+            req.io.to(`user-${order.customer_id}`).emit('new-offer', {
+                message: 'New offer received for your order',
+                offer: populatedOffer
+            });
+
+            // Notify the driver who created the offer
+            req.io.to(`driver-${id}`).emit('offer-created', {
+                message: 'Your offer has been submitted successfully',
+                offer: populatedOffer
+            });
+
+            // Also emit a notification event
+            req.io.to(`user-${order.customer_id}`).emit('new-notification', {
+                title: 'New Offer Received',
+                message: `You have received a new offer of $${price} for your order`
+            });
+        }
+
         res.status(201).json({
             message: 'Offer created successfully',
-            offer: populatedOffer
+            offer: {
+                id: offer._id,
+                order_id: offer.order_id,
+                driver_id: offer.driver_id,
+                price: offer.price,
+                notes: offer.notes,
+                status: offer.status,
+                createdAt: offer.createdAt,
+                updatedAt: offer.updatedAt,
+            },
         });
-    } catch (error) {
-        console.error('Create offer error:', error);
-        res.status(500).json({ message: 'Internal server error' });
+    } catch (error: any) {
+        res.status(500).json({
+            message: 'Error creating offer',
+            error: error.message,
+        });
     }
 };
 
-export const getOffers = async (req: Request, res: Response): Promise<void> => {
+export const getDriverOffers = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
-        const offers = await Offer.find()
-            .populate('driver_id', 'fullName email phoneNumber vehicleNumber vehicleType photo')
-            .populate('order_id')
-            .sort({ createdAt: -1 });
-
-        res.json(offers);
-    } catch (error) {
-        console.error('Get offers error:', error);
-        res.status(500).json({ message: 'Internal server error' });
-    }
-};
-
-export const getOfferById = async (req: Request, res: Response): Promise<void> => {
-    try {
-        const offer = await Offer.findById(req.params.id)
-            .populate('driver_id', 'fullName email phoneNumber vehicleNumber vehicleType photo')
-            .populate('order_id');
-
-        if (!offer) {
-            res.status(404).json({ message: 'Offer not found' });
+        const { id, role } = req.user!;
+        if (role !== 'driver') {
+            res.status(403).json({ message: 'Unauthorized: Only drivers can access their offers' });
             return;
         }
 
-        res.json(offer);
-    } catch (error) {
-        console.error('Get offer error:', error);
-        res.status(500).json({ message: 'Internal server error' });
-    }
-};
-
-export const updateOffer = async (req: Request, res: Response): Promise<void> => {
-    try {
-        const offer = await Offer.findByIdAndUpdate(
-            req.params.id,
-            req.body,
-            { new: true, runValidators: true }
-        ).populate('driver_id', 'fullName email phoneNumber vehicleNumber vehicleType photo')
-            .populate('order_id');
-
-        if (!offer) {
-            res.status(404).json({ message: 'Offer not found' });
-            return;
-        }
-
-        const io = req.app.get('io');
-        io.to(`order-${offer.order_id._id}`).emit('offer-updated', offer);
+        const offers = await Offer.find({ driver_id: id }).populate('order_id');
 
         res.json({
-            message: 'Offer updated successfully',
-            offer
+            message: 'Offers retrieved successfully',
+            offers: offers.map((offer) => ({
+                id: offer._id,
+                order_id: offer.order_id,
+                price: offer.price,
+                notes: offer.notes,
+                status: offer.status,
+                createdAt: offer.createdAt,
+                updatedAt: offer.updatedAt,
+            })),
         });
-    } catch (error) {
-        console.error('Update offer error:', error);
-        res.status(500).json({ message: 'Internal server error' });
+    } catch (error: any) {
+        res.status(500).json({
+            message: 'Error retrieving offers',
+            error: error.message,
+        });
     }
 };
 
-export const acceptOffer = async (req: AuthRequest, res: Response): Promise<void> => {
+export const getOrderOffers = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
-        const offer = await Offer.findById(req.params.id)
-            .populate({
-                path: 'driver_id',
-                select: 'fullName email phoneNumber vehicleNumber vehicleType photo',
-                populate: {
-                    path: 'vehicleType',
-                    model: 'Vehicle',
-                    select: '_id category type image imagePublicId createdAt updatedAt __v'
-                }
-            })
-            .populate('order_id');
+        const { id, role } = req.user!;
+        if (role !== 'router') {
+            res.status(403).json({ message: 'Unauthorized: Only routers can access their order offers' });
+            return;
+        }
 
+        const orderId = req.params.id;
+        if (!mongoose.Types.ObjectId.isValid(orderId)) {
+            res.status(400).json({ message: 'Invalid order ID' });
+            return;
+        }
+
+        const order = await Order.findOne({ _id: orderId, customer_id: id });
+        if (!order) {
+            res.status(404).json({ message: 'Order not found or you do not have access to this order' });
+            return;
+        }
+
+        const offers = await Offer.find({ order_id: orderId }).populate('driver_id');
+
+        if (req.io && req.headers['socket-id']) {
+            req.io.to(req.headers['socket-id']).emit('subscribe-order-offers', orderId);
+        }
+
+        res.json({
+            message: 'Offers retrieved successfully',
+            offers: offers.map((offer) => ({
+                id: offer._id,
+                driver_id: offer.driver_id,
+                price: offer.price,
+                notes: offer.notes,
+                status: offer.status,
+                createdAt: offer.createdAt,
+                updatedAt: offer.updatedAt,
+            })),
+        });
+    } catch (error: any) {
+        res.status(500).json({
+            message: 'Error retrieving offers',
+            error: error.message,
+        });
+    }
+};
+
+export const acceptOffer = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+        const { id, role } = req.user!;
+        if (role !== 'router') {
+            res.status(403).json({ message: 'Unauthorized: Only routers can accept offers' });
+            return;
+        }
+
+        const offerId = req.params.id;
+        if (!mongoose.Types.ObjectId.isValid(offerId)) {
+            res.status(400).json({ message: 'Invalid offer ID' });
+            return;
+        }
+
+        const offer = await Offer.findById(offerId);
         if (!offer) {
             res.status(404).json({ message: 'Offer not found' });
+            return;
+        }
+
+        const order = await Order.findOne({ _id: offer.order_id, customer_id: id });
+        if (!order) {
+            res.status(404).json({ message: 'Order not found or you do not have access to this order' });
+            return;
+        }
+
+        if (offer.status !== 'Pending') {
+            res.status(400).json({ message: 'Offer cannot be accepted as it is not pending' });
             return;
         }
 
         offer.status = 'Accepted';
         await offer.save();
 
-        await Order.findByIdAndUpdate(offer.order_id._id, { status: 'Active' });
-
         await Offer.updateMany(
-            {
-                order_id: offer.order_id._id,
-                _id: { $ne: offer._id }
-            },
-            { status: 'Rejected' }
+            { order_id: offer.order_id, _id: { $ne: offer._id } },
+            { $set: { status: 'Rejected' } }
         );
 
-        const updatedOrder = await Order.findById(offer.order_id._id);
+        // Update the order status
+        await Order.findByIdAndUpdate(offer.order_id, { status: 'Active' });
 
-        const io = req.app.get('io');
-        io.to(`driver-${offer.driver_id._id}`).emit('offer-accepted', offer);
-        io.to(`order-${offer.order_id._id}`).emit('order-updated', updatedOrder);
-        const acceptNotificationData = {
-            driver_id: offer.driver_id._id.toString(),
-            order_id: offer.order_id._id.toString(),
-            ...notificationTemplates.offerAccepted(
-                `${req.user?.fullName || 'The customer'}`
-            ),
-            metadata: { offer_id: offer._id }
-        };
+        // Populate the accepted offer with driver details
+        const populatedOffer = await Offer.findById(offer._id)
+            .populate('driver_id')
+            .populate('order_id');;
 
-        await createNotification(acceptNotificationData);
-        res.json({
-            message: 'Offer accepted successfully',
-            offer,
-            order: updatedOrder
+        // Create notifications for acceptance
+        await Notification.create({
+            driver_id: offer.driver_id, // The driver whose offer was accepted
+            order_id: offer.order_id,
+            type: 'offer_accepted',
+            title: 'Offer Accepted',
+            message: 'Your offer has been accepted!',
+            is_read: false,
         });
-    } catch (error) {
-        console.error('Accept offer error:', error);
-        res.status(500).json({ message: 'Internal server error' });
-    }
-};
 
-export const rejectOffer = async (req: AuthRequest, res: Response): Promise<void> => {
-    try {
-        const offer = await Offer.findByIdAndUpdate(
-            req.params.id,
-            { status: 'Rejected' },
-            { new: true }
-        ).populate('driver_id', 'fullName email phoneNumber vehicleNumber vehicleType photo')
-            .populate('order_id');
+        await Notification.create({
+            user_id: id, // The router who accepted the offer
+            order_id: offer.order_id,
+            type: 'offer_accepted',
+            title: 'Offer Accepted',
+            message: 'You have accepted an offer',
+            is_read: false,
+        });
 
-        if (!offer) {
-            res.status(404).json({ message: 'Offer not found' });
-            return;
+        // Create notifications for rejected offers
+        const rejectedOffers = await Offer.find({
+            order_id: offer.order_id,
+            _id: { $ne: offer._id }
+        });
+
+        for (const rejectedOffer of rejectedOffers) {
+            await Notification.create({
+                driver_id: rejectedOffer.driver_id,
+                order_id: offer.order_id,
+                type: 'offer_rejected',
+                title: 'Offer Not Selected',
+                message: 'Your offer was not selected for this order',
+                is_read: false,
+            });
         }
 
-        const io = req.app.get('io');
-        io.to(`driver-${offer.driver_id._id}`).emit('offer-rejected', offer);
-        const rejectNotificationData = {
-            driver_id: offer.driver_id._id.toString(),
-            order_id: offer.order_id._id.toString(),
-            ...notificationTemplates.offerRejected(
-                `${req.user?.fullName || 'The customer'}`
-            ),
-            metadata: { offer_id: offer._id }
-        };
+        // Emit Socket.IO events for offer acceptance
+        if (req.io) {
+            // Notify the driver whose offer was accepted
+            req.io.to(`driver-${offer.driver_id}`).emit('offer-accepted', {
+                message: 'Your offer has been accepted',
+                offer: populatedOffer
+            });
 
-        await createNotification(rejectNotificationData);
+            // Notify the router who accepted the offer
+            req.io.to(`user-${id}`).emit('offer-accepted-confirmation', {
+                message: 'Offer accepted successfully',
+                offer: populatedOffer
+            });
+
+            // Notify other drivers that their offers were rejected
+            rejectedOffers.forEach(rejectedOffer => {
+                req?.io?.to(`driver-${rejectedOffer.driver_id}`).emit('offer-rejected', {
+                    message: 'Your offer was not selected',
+                    order_id: rejectedOffer.order_id
+                });
+            });
+
+            // Emit notification events
+            req.io.to(`driver-${offer.driver_id}`).emit('new-notification', {
+                title: 'Offer Accepted',
+                message: 'Your offer has been accepted!'
+            });
+
+            req.io.to(`user-${id}`).emit('new-notification', {
+                title: 'Offer Accepted',
+                message: 'You have accepted an offer'
+            });
+
+            rejectedOffers.forEach(rejectedOffer => {
+                req?.io?.to(`driver-${rejectedOffer.driver_id}`).emit('new-notification', {
+                    title: 'Offer Not Selected',
+                    message: 'Your offer was not selected for this order'
+                });
+            });
+        }
+
         res.json({
-            message: 'Offer rejected successfully',
-            offer
+            message: 'Offer accepted successfully',
+            offer: {
+                id: offer._id,
+                order_id: offer.order_id,
+                driver_id: offer.driver_id,
+                price: offer.price,
+                notes: offer.notes,
+                status: offer.status,
+                createdAt: offer.createdAt,
+                updatedAt: offer.updatedAt,
+            },
         });
-    } catch (error) {
-        console.error('Reject offer error:', error);
-        res.status(500).json({ message: 'Internal server error' });
-    }
-};
-
-export const getOrderOffers = async (req: Request, res: Response): Promise<void> => {
-    try {
-        const offers = await Offer.find({ order_id: req.params.orderId })
-            .populate({
-                path: 'driver_id',
-                select: 'fullName email phoneNumber vehicleNumber vehicleType photo',
-                populate: {
-                    path: 'vehicleType',
-                    model: 'Vehicle',
-                    select: '_id category type image imagePublicId createdAt updatedAt __v'
-                }
-            })
-            .sort({ createdAt: -1 });
-
-        res.json(offers);
-    } catch (error) {
-        console.error('Get order offers error:', error);
-        res.status(500).json({ message: 'Internal server error' });
-    }
-};
-
-export const getDriverOffers = async (req: AuthRequest, res: Response): Promise<void> => {
-    try {
-        const offers = await Offer.find({ driver_id: req.user?.id })
-            .populate({
-                path: 'driver_id',
-                select: 'fullName email phoneNumber vehicleNumber vehicleType photo',
-                populate: {
-                    path: 'vehicleType',
-                    model: 'Vehicle',
-                    select: '_id category type image imagePublicId createdAt updatedAt __v'
-                }
-            })
-            .populate({
-                path: 'order_id',
-                populate: {
-                    path: 'customer_id',
-                    select: 'fullName email phoneNumber'
-                }
-            })
-            .sort({ createdAt: -1 });
-
-        res.json(offers);
-    } catch (error) {
-        console.error('Get driver offers error:', error);
-        res.status(500).json({ message: 'Internal server error' });
+    } catch (error: any) {
+        res.status(500).json({
+            message: 'Error accepting offer',
+            error: error.message,
+        });
     }
 };

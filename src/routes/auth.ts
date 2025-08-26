@@ -1,35 +1,32 @@
 import express from 'express';
-import { body } from 'express-validator';
-import { validate } from '../middleware/validation';
-import upload from '../config/multer';
-import { signIn, signUpDriver, signUpRouter } from '../controllers/AuthController';
+import { authenticate } from '../middleware/auth';
+import multer from 'multer';
+import { changePassword, getDriverById, getUserById, login, signupDriver, signupUser, updateDriver, updateUser, validateDriverSignup, validateDriverUpdate, validateUserUpdate } from '../controllers/AuthController';
+
+
+const upload = multer({ storage: multer.memoryStorage() });
 
 const router = express.Router();
 
-const userSignupValidation = [
-    body('fullName').notEmpty().withMessage('Full name is required'),
-    body('email').isEmail().withMessage('Valid email is required'),
-    body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters long'),
-    body('phoneNumber').notEmpty().withMessage('Phone number is required'),
-];
 
-const driverSignupValidation = [
-    body('fullName').notEmpty().withMessage('Full name is required'),
-    body('email').isEmail().withMessage('Valid email is required'),
-    body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters long'),
-    body('phoneNumber').notEmpty().withMessage('Phone number is required'),
-    body('vehicleNumber').notEmpty().withMessage('Vehicle number is required'),
-    body('vehicleTypeId').notEmpty().withMessage('Vehicle type is required'),
-];
+router.post('/signup/user', signupUser);
 
-const signinValidation = [
-    body('email').isEmail().withMessage('Valid email is required'),
-    body('password').notEmpty().withMessage('Password is required'),
-    body('role').isIn(['user', 'driver']).withMessage('Role must be either user or driver'),
-];
 
-router.post('/signup/user', userSignupValidation, validate, signUpRouter);
-router.post('/signup/driver', upload.single('photo'), driverSignupValidation, validate, signUpDriver);
-router.post('/signin', signinValidation, validate, signIn);
+router.post('/signup/driver', upload.single('photo'), validateDriverSignup, signupDriver);
+
+
+router.put('/update/user', authenticate, validateUserUpdate, updateUser);
+
+
+router.put('/update/driver', authenticate, upload.single('photo'), validateDriverUpdate, updateDriver);
+
+
+router.post('/login', login);
+
+
+router.put('/change-password', authenticate, changePassword);
+
+router.get('/user/me', authenticate, getUserById);
+router.get('/driver/me', authenticate, getDriverById);
 
 export default router;

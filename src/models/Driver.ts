@@ -1,52 +1,73 @@
-import mongoose, { Document, Schema } from 'mongoose';
-import { Driver as DriverInterface } from '../types';
+import { Document, Types, Schema, Model, model } from 'mongoose';
+import { Vehicle } from './Vehicle'; // Import Vehicle interface
 
+interface Driver extends Document {
+  _id: Types.ObjectId;
+  fullName: string;
+  email: string;
+  password: string;
+  phoneNumber: string;
+  vehicleNumber: string;
+  vehicleType: Vehicle; // Store full Vehicle object
+  photo?: string;
+  photoPublicId?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
 
-const driverSchema = new Schema(
-    {
-        fullName: {
-            type: String,
-            required: true,
-            trim: true,
-        },
-        email: {
-            type: String,
-            required: true,
-            unique: true,
-            lowercase: true,
-        },
-        password: {
-            type: String,
-            required: true,
-            minlength: 6,
-        },
-        phoneNumber: {
-            type: String,
-            required: true,
-            unique: true,
-        },
-        photo: {
-            type: String,
-            required: true,
-        },
-        photoPublicId: {
-            type: String,
-            required: false,
-        },
-        vehicleNumber: {
-            type: String,
-            required: true,
-            uppercase: true,
-        },
-        vehicleType: {
-            type: String,
-            required: true,
-            ref: 'VehicleType',
-        },
-    },
-    {
-        timestamps: true,
-    }
-);
+const vehicleTypeSchema = new Schema({
+  _id: { type: Schema.Types.ObjectId, required: true },
+  category: { type: String, required: true },
+  type: { type: String },
+  image: { type: String, required: false },
+  imagePublicId: { type: String, required: false },
+  createdAt: { type: Date, required: true },
+  updatedAt: { type: Date, required: true },
+});
 
-export default mongoose.model('Driver', driverSchema);
+const driverSchema: Schema<Driver> = new Schema({
+  fullName: {
+    type: String,
+    required: true,
+    trim: true,
+  },
+  email: {
+    type: String,
+    required: true,
+    unique: true,
+    lowercase: true,
+  },
+  password: {
+    type: String,
+    required: true,
+    minlength: 6,
+  },
+  phoneNumber: {
+    type: String,
+    required: true,
+    unique: true,
+  },
+  vehicleNumber: {
+    type: String,
+    required: true,
+    unique: true,
+  },
+  vehicleType: {
+    type: vehicleTypeSchema,
+    required: true,
+  },
+  photo: {
+    type: String,
+    required: false,
+  },
+  photoPublicId: {
+    type: String,
+    required: false,
+  },
+}, {
+  timestamps: true
+});
+
+const Driver: Model<Driver> = model<Driver>('Driver', driverSchema);
+
+export default Driver;
