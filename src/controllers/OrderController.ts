@@ -112,9 +112,9 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response): Pro
             });
 
 
-        // Create notification for order creation
+        
         await Notification.create({
-            user_id: id, // The router who created the order
+            user_id: id,
             order_id: order._id,
             type: 'order_created',
             title: 'Order Created',
@@ -122,21 +122,21 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response): Pro
             is_read: false,
         });
 
-        // Emit Socket.IO event for new order creation
+        
         if (req.io) {
-            // Notify all drivers about the new order
+           
             req.io.emit('new-order', {
                 message: 'New order available',
                 order: populatedOrder
             });
 
-            // Notify the specific router who created the order
+          
             req.io.to(`user-${id}`).emit('order-created', {
                 message: 'Your order has been created successfully',
                 order: populatedOrder
             });
 
-            // Emit notification event
+           
             req.io.to(`user-${id}`).emit('new-notification', {
                 title: 'Order Created',
                 message: 'Your order has been created successfully'
@@ -147,7 +147,7 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response): Pro
             message: 'Order created successfully',
             order: {
                 id: populatedOrder!._id,
-                customer: populatedOrder!.customer_id, // Now contains full router info
+                customer: populatedOrder!.customer_id,
                 from_location: populatedOrder!.from_location,
                 to_location: populatedOrder!.to_location,
                 vehicle_type: populatedOrder!.vehicle_type,
@@ -297,7 +297,7 @@ export const getDriverOrders = async (req: AuthenticatedRequest, res: Response):
 
         const filteredOrders = orders.filter((order) => order.vehicle_type !== null);
 
-        // Emit subscription event for real-time updates
+
         if (req.io && req.headers['socket-id']) {
             req.io.to(req.headers['socket-id']).emit('subscribe-driver-orders', id);
         }
@@ -306,7 +306,7 @@ export const getDriverOrders = async (req: AuthenticatedRequest, res: Response):
             message: 'Orders retrieved successfully',
             orders: filteredOrders.map((order) => ({
                 id: order._id,
-                customer: order.customer_id, // Full router info
+                customer: order.customer_id,
                 from_location: order.from_location,
                 to_location: order.to_location,
                 vehicle_type: order.vehicle_type,

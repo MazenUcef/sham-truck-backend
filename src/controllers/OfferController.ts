@@ -63,15 +63,15 @@ export const createOffer = async (req: AuthenticatedRequest, res: Response): Pro
             status: 'Pending',
         });
 
-        // Populate the offer with driver and order details
+
         const populatedOffer = await Offer.findById(offer._id)
             .populate('driver_id')
             .populate('order_id');
 
-        // Create a notification in the database
+
         await Notification.create({
-            user_id: order.customer_id, // The router who created the order
-            driver_id: id, // The driver who made the offer
+            user_id: order.customer_id, 
+            driver_id: id, 
             order_id: order_id,
             type: 'new_offer',
             title: 'New Offer Received',
@@ -79,21 +79,21 @@ export const createOffer = async (req: AuthenticatedRequest, res: Response): Pro
             is_read: false,
         });
 
-        // Emit Socket.IO events for new offer
+
         if (req.io) {
-            // Notify the router about the new offer
+
             req.io.to(`user-${order.customer_id}`).emit('new-offer', {
                 message: 'New offer received for your order',
                 offer: populatedOffer
             });
 
-            // Notify the driver who created the offer
+           
             req.io.to(`driver-${id}`).emit('offer-created', {
                 message: 'Your offer has been submitted successfully',
                 offer: populatedOffer
             });
 
-            // Also emit a notification event
+           
             req.io.to(`user-${order.customer_id}`).emit('new-notification', {
                 title: 'New Offer Received',
                 message: `You have received a new offer of $${price} for your order`
@@ -236,17 +236,17 @@ export const acceptOffer = async (req: AuthenticatedRequest, res: Response): Pro
             { $set: { status: 'Rejected' } }
         );
 
-        // Update the order status
+        
         await Order.findByIdAndUpdate(offer.order_id, { status: 'Active' });
 
-        // Populate the accepted offer with driver details
+        
         const populatedOffer = await Offer.findById(offer._id)
             .populate('driver_id')
             .populate('order_id');;
 
-        // Create notifications for acceptance
+        
         await Notification.create({
-            driver_id: offer.driver_id, // The driver whose offer was accepted
+            driver_id: offer.driver_id, 
             order_id: offer.order_id,
             type: 'offer_accepted',
             title: 'Offer Accepted',
@@ -255,7 +255,7 @@ export const acceptOffer = async (req: AuthenticatedRequest, res: Response): Pro
         });
 
         await Notification.create({
-            user_id: id, // The router who accepted the offer
+            user_id: id,
             order_id: offer.order_id,
             type: 'offer_accepted',
             title: 'Offer Accepted',
@@ -263,7 +263,7 @@ export const acceptOffer = async (req: AuthenticatedRequest, res: Response): Pro
             is_read: false,
         });
 
-        // Create notifications for rejected offers
+   
         const rejectedOffers = await Offer.find({
             order_id: offer.order_id,
             _id: { $ne: offer._id }
@@ -280,21 +280,21 @@ export const acceptOffer = async (req: AuthenticatedRequest, res: Response): Pro
             });
         }
 
-        // Emit Socket.IO events for offer acceptance
+        
         if (req.io) {
-            // Notify the driver whose offer was accepted
+            
             req.io.to(`driver-${offer.driver_id}`).emit('offer-accepted', {
                 message: 'Your offer has been accepted',
                 offer: populatedOffer
             });
 
-            // Notify the router who accepted the offer
+           
             req.io.to(`user-${id}`).emit('offer-accepted-confirmation', {
                 message: 'Offer accepted successfully',
                 offer: populatedOffer
             });
 
-            // Notify other drivers that their offers were rejected
+          
             rejectedOffers.forEach(rejectedOffer => {
                 req?.io?.to(`driver-${rejectedOffer.driver_id}`).emit('offer-rejected', {
                     message: 'Your offer was not selected',
@@ -302,7 +302,7 @@ export const acceptOffer = async (req: AuthenticatedRequest, res: Response): Pro
                 });
             });
 
-            // Emit notification events
+           
             req.io.to(`driver-${offer.driver_id}`).emit('new-notification', {
                 title: 'Offer Accepted',
                 message: 'Your offer has been accepted!'

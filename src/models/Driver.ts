@@ -1,5 +1,5 @@
 import { Document, Types, Schema, Model, model } from 'mongoose';
-import { Vehicle } from './Vehicle'; // Import Vehicle interface
+import { Vehicle } from './Vehicle';
 
 interface Driver extends Document {
   _id: Types.ObjectId;
@@ -8,7 +8,7 @@ interface Driver extends Document {
   password: string;
   phoneNumber: string;
   vehicleNumber: string;
-  vehicleType: Vehicle; // Store full Vehicle object
+  vehicleType: Vehicle; 
   photo?: string;
   photoPublicId?: string;
   createdAt: Date;
