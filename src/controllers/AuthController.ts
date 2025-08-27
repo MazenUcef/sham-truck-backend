@@ -59,7 +59,7 @@ export const validateDriverSignup = [
         .isLength({ min: 8 })
         .withMessage('Password must be at least 8 characters long'),
     body('phoneNumber')
-        .trim().notEmpty().withMessage('Full name is required'),
+        .trim().notEmpty().withMessage('Phone Number is required'),
     body('vehicleNumber').trim().notEmpty().withMessage('Vehicle number is required'),
     body('vehicleTypeId').isMongoId().withMessage('Invalid vehicle type ID'),
 ];
@@ -69,9 +69,7 @@ export const validateUserUpdate = [
     body('fullName').optional().trim().notEmpty().withMessage('Full name cannot be empty'),
     body('email').optional().isEmail().normalizeEmail().withMessage('Invalid email address'),
     body('phoneNumber')
-        .optional()
-        .matches(/^\+?[1-9]\d{1,14}$/)
-        .withMessage('Invalid phone number'),
+        .trim().notEmpty().withMessage('Phone Number is required'),
 ];
 
 
@@ -79,9 +77,7 @@ export const validateDriverUpdate = [
     body('fullName').optional().trim().notEmpty().withMessage('Full name cannot be empty'),
     body('email').optional().isEmail().normalizeEmail().withMessage('Invalid email address'),
     body('phoneNumber')
-        .optional()
-        .matches(/^\+?[1-9]\d{1,14}$/)
-        .withMessage('Invalid phone number'),
+        .trim().notEmpty().withMessage('Phone Number is required'),
     body('vehicleNumber').optional().trim().notEmpty().withMessage('Vehicle number cannot be empty'),
     body('vehicleTypeId').optional().isMongoId().withMessage('Invalid vehicle type ID'),
 ];
