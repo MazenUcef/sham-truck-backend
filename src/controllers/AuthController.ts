@@ -59,8 +59,7 @@ export const validateDriverSignup = [
         .isLength({ min: 8 })
         .withMessage('Password must be at least 8 characters long'),
     body('phoneNumber')
-        .matches(/^\+?[1-9]\d{1,14}$/)
-        .withMessage('Invalid phone number'),
+        .trim().notEmpty().withMessage('Full name is required'),
     body('vehicleNumber').trim().notEmpty().withMessage('Vehicle number is required'),
     body('vehicleTypeId').isMongoId().withMessage('Invalid vehicle type ID'),
 ];
