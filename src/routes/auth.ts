@@ -1,7 +1,7 @@
 import express from 'express';
 import { authenticate } from '../middleware/auth';
 import multer from 'multer';
-import { changePassword, getDriverById, getUserById, login, signupDriver, signupUser, updateDriver, updateUser, validateDriverSignup, validateDriverUpdate, validateUserUpdate } from '../controllers/AuthController';
+import { changePassword, getDriverById, getUserById, getUserGeneralById, login, signupDriver, signupUser, updateDriver, updateUser, validateDriverSignup, validateDriverUpdate, validateUserUpdate } from '../controllers/AuthController';
 
 
 const upload = multer({ storage: multer.memoryStorage() });
@@ -28,5 +28,6 @@ router.put('/change-password', authenticate, changePassword);
 
 router.get('/user/me', authenticate, getUserById);
 router.get('/driver/me', authenticate, getDriverById);
+router.get('/getGeneralUser/:id/:role', getUserGeneralById);
 
 export default router;
