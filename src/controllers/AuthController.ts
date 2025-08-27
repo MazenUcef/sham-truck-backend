@@ -6,6 +6,7 @@ import Vehicle from '../models/Vehicle';
 import { generateToken } from '../utils/token';
 import { uploadToCloudinary, deleteFromCloudinary } from '../utils/cloudinary';
 import User from '../models/Router';
+import mongoose from 'mongoose';
 
 interface UserSignupData {
     fullName: string;
@@ -144,94 +145,107 @@ export const signupUser = async (req: Request, res: Response): Promise<void> => 
 
 
 export const signupDriver = async (req: Request, res: Response): Promise<void> => {
-    let photoPublicId = '';
-    try {
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            res.status(400).json({ errors: errors.array() });
-            return;
-        }
-
-        const { fullName, email, password, phoneNumber, vehicleNumber, vehicleTypeId }: DriverSignupData = req.body;
-
-        const existingUser = await User.findOne({
-            $or: [{ email }, { phoneNumber }, { vehicleNumber }]
-        });
-        const existingDriver = await Driver.findOne({
-            $or: [{ email }, { phoneNumber }, { vehicleNumber }]
-        });
-
-        if (existingUser || existingDriver) {
-            res.status(400).json({ message: 'Email, phone number, or vehicle number already exists' });
-            return;
-        }
-
-        const vehicleType = await Vehicle.findById(vehicleTypeId);
-        if (!vehicleType) {
-            res.status(400).json({ message: 'Invalid vehicle type ID' });
-            return;
-        }
-
-        let photo = '';
-        if (req.file) {
-            try {
-                const uploadResult = await uploadToCloudinary(req.file);
-                photo = uploadResult.secure_url;
-                photoPublicId = uploadResult.public_id;
-            } catch (uploadError) {
-                console.error('Cloudinary upload error:', uploadError);
-                res.status(500).json({ message: 'Failed to upload photo' });
-                return;
-            }
-        }
-
-        const hashedPassword = await bcrypt.hash(password, 12);
-
-        const driver = await Driver.create({
-            fullName,
-            email,
-            password: hashedPassword,
-            phoneNumber,
-            vehicleNumber,
-            vehicleType: vehicleTypeId,
-            photo,
-            photoPublicId
-        });
-
-        const token = generateToken({
-            id: driver._id.toString(),
-            role: 'driver',
-            fullName: driver.fullName
-        });
-
-        res.status(201).json({
-            message: 'Driver created successfully',
-            token,
-            driver: {
-                id: driver._id,
-                fullName: driver.fullName,
-                email: driver.email,
-                phoneNumber: driver.phoneNumber,
-                vehicleNumber: driver.vehicleNumber,
-                vehicleType,
-                photo: driver.photo,
-                role: "driver"
-            }
-        });
-    } catch (error: any) {
-        console.error('Driver signup error:', error);
-        if (photoPublicId) {
-            try {
-                await deleteFromCloudinary(photoPublicId);
-            } catch (deleteError) {
-                console.error('Error cleaning up Cloudinary image:', deleteError);
-            }
-        }
-        res.status(500).json({
-            message: 'Error creating driver',
-            error: error.message
-        });
+  let photoPublicId = '';
+  try {
+    // Validate request body
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      res.status(400).json({ errors: errors.array() });
+      return;
     }
+
+    const { fullName, email, password, phoneNumber, vehicleNumber, vehicleTypeId }: DriverSignupData = req.body;
+
+    // Check for existing user or driver
+    const existingUser = await User.findOne({
+      $or: [{ email }, { phoneNumber }],
+    });
+    const existingDriver = await Driver.findOne({
+      $or: [{ email }, { phoneNumber }, { vehicleNumber }],
+    });
+
+    if (existingUser || existingDriver) {
+      res.status(400).json({ errors: [{ msg: 'Email, phone number, or vehicle number already exists', path: 'email or phoneNumber or vehicleNumber' }] });
+      return;
+    }
+
+    // Validate vehicleTypeId as a MongoDB ObjectId
+    if (!mongoose.Types.ObjectId.isValid(vehicleTypeId)) {
+      res.status(400).json({ errors: [{ msg: 'Invalid vehicle type ID', path: 'vehicleTypeId', value: vehicleTypeId }] });
+      return;
+    }
+
+    // Check if vehicle type exists
+    const vehicleType = await Vehicle.findById(vehicleTypeId);
+    if (!vehicleType) {
+      res.status(400).json({ errors: [{ msg: 'Vehicle type not found', path: 'vehicleTypeId' }] });
+      return;
+    }
+
+    // Handle photo upload
+    let photo = '';
+    if (req.file) {
+      try {
+        const uploadResult = await uploadToCloudinary(req.file);
+        photo = uploadResult.secure_url;
+        photoPublicId = uploadResult.public_id;
+      } catch (uploadError) {
+        console.error('Cloudinary upload error:', uploadError);
+        res.status(500).json({ errors: [{ msg: 'Failed to upload photo' }] });
+        return;
+      }
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 12);
+
+    // Create driver - store only the vehicleType ID
+    const driver = await Driver.create({
+      fullName,
+      email,
+      password: hashedPassword,
+      phoneNumber,
+      vehicleNumber,
+      vehicleType: vehicleTypeId, // Store only the ID
+      photo,
+      photoPublicId,
+    });
+
+    // Generate JWT token
+    const token = generateToken({
+      id: driver._id.toString(),
+      role: 'driver',
+      fullName: driver.fullName,
+    });
+
+    // Send response with vehicleTypeId
+    res.status(201).json({
+      message: 'Driver created successfully',
+      token,
+      driver: {
+        id: driver._id,
+        fullName: driver.fullName,
+        email: driver.email,
+        phoneNumber: driver.phoneNumber,
+        vehicleNumber: driver.vehicleNumber,
+        vehicleTypeId, // Return only the ID
+        photo: driver.photo,
+        role: 'driver',
+      },
+    });
+  } catch (error: any) {
+    console.error('Driver signup error:', error);
+    if (photoPublicId) {
+      try {
+        await deleteFromCloudinary(photoPublicId);
+      } catch (deleteError) {
+        console.error('Error cleaning up Cloudinary image:', deleteError);
+      }
+    }
+    res.status(500).json({
+      errors: [{ msg: 'Error creating driver', error: error.message }],
+    });
+  }
 };
 
 
@@ -311,27 +325,28 @@ export const updateDriver = async (req: AuthenticatedRequest, res: Response): Pr
 
     const { fullName, email, phoneNumber, vehicleNumber, vehicleTypeId }: DriverUpdateData = req.body;
 
-    const updateData: DriverUpdateData & { photo?: string; photoPublicId?: string; vehicleType?: any } = {};
+    const updateData: any = {};
     if (fullName) updateData.fullName = fullName;
     if (email) updateData.email = email;
     if (phoneNumber) updateData.phoneNumber = phoneNumber;
     if (vehicleNumber) updateData.vehicleNumber = vehicleNumber;
     if (vehicleTypeId) {
-      const vehicleType = await Vehicle.findById(vehicleTypeId);
-      if (!vehicleType) {
+      // Validate vehicleTypeId
+      if (!mongoose.Types.ObjectId.isValid(vehicleTypeId)) {
         res.status(400).json({ message: 'Invalid vehicle type ID' });
         return;
       }
-      updateData.vehicleType = {
-        _id: vehicleType._id,
-        category: vehicleType.category,
-        type: vehicleType.type,
-        image: vehicleType.image,
-        imagePublicId: vehicleType.imagePublicId,
-        createdAt: vehicleType.createdAt,
-        updatedAt: vehicleType.updatedAt,
-      };
+      
+      // Check if vehicle type exists
+      const vehicleType = await Vehicle.findById(vehicleTypeId);
+      if (!vehicleType) {
+        res.status(400).json({ message: 'Vehicle type not found' });
+        return;
+      }
+      
+      updateData.vehicleType = vehicleTypeId; // Store only the ID
     }
+
 
     if (email || phoneNumber || vehicleNumber) {
       const existingUser = await User.findOne({
@@ -587,7 +602,9 @@ export const getDriverById = async (req: AuthenticatedRequest, res: Response): P
       return;
     }
 
-    const driver = await Driver.findById(id).select('-password');
+    // Populate vehicleType if you want the full vehicle details
+    const driver = await Driver.findById(id).populate('vehicleType').select('-password');
+    
     if (!driver) {
       res.status(404).json({ message: 'Driver not found' });
       return;
@@ -601,7 +618,8 @@ export const getDriverById = async (req: AuthenticatedRequest, res: Response): P
         email: driver.email,
         phoneNumber: driver.phoneNumber,
         vehicleNumber: driver.vehicleNumber,
-        vehicleType: driver.vehicleType,
+        vehicleType: driver.vehicleType, // This will be populated if you used populate()
+        vehicleTypeId: driver.vehicleType, // This will be just the ID if not populated
         photo: driver.photo,
         role: 'driver'
       }

@@ -274,20 +274,20 @@ export const getDriverOrders = async (req: AuthenticatedRequest, res: Response):
             return;
         }
 
-        const driver = await Driver.findById(id);
+        const driver = await Driver.findById(id).populate('vehicleType');
         if (!driver) {
             res.status(404).json({ message: 'Driver not found' });
             return;
         }
 
-        const driverVehicleCategory = driver.vehicleType.category;
+        const driverVehicleId = driver.vehicleType._id;
 
         const orders = await Order.find({
             status: 'Pending',
         })
             .populate({
                 path: 'vehicle_type',
-                match: { category: driverVehicleCategory },
+                match: { id: driverVehicleId },
             })
             .populate({
                 path: 'customer_id',
@@ -296,7 +296,6 @@ export const getDriverOrders = async (req: AuthenticatedRequest, res: Response):
             .lean();
 
         const filteredOrders = orders.filter((order) => order.vehicle_type !== null);
-
 
         if (req.io && req.headers['socket-id']) {
             req.io.to(req.headers['socket-id']).emit('subscribe-driver-orders', id);

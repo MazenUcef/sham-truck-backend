@@ -1,5 +1,4 @@
 import { Document, Types, Schema, Model, model } from 'mongoose';
-import { Vehicle } from './Vehicle';
 
 interface Driver extends Document {
   _id: Types.ObjectId;
@@ -8,22 +7,13 @@ interface Driver extends Document {
   password: string;
   phoneNumber: string;
   vehicleNumber: string;
-  vehicleType: Vehicle; 
+  vehicleType: Types.ObjectId;
   photo?: string;
   photoPublicId?: string;
   createdAt: Date;
   updatedAt: Date;
 }
 
-const vehicleTypeSchema = new Schema({
-  _id: { type: Schema.Types.ObjectId, required: true },
-  category: { type: String, required: true },
-  type: { type: String },
-  image: { type: String, required: false },
-  imagePublicId: { type: String, required: false },
-  createdAt: { type: Date, required: true },
-  updatedAt: { type: Date, required: true },
-});
 
 const driverSchema: Schema<Driver> = new Schema({
   fullName: {
@@ -53,7 +43,8 @@ const driverSchema: Schema<Driver> = new Schema({
     unique: true,
   },
   vehicleType: {
-    type: vehicleTypeSchema,
+    type: Schema.Types.ObjectId, // Store only ObjectId
+    ref: 'Vehicle', // Reference to Vehicle model
     required: true,
   },
   photo: {
