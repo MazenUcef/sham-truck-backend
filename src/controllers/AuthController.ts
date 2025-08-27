@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { body, validationResult } from 'express-validator';
-import Driver from '../models/Driver';
+import Driver, { IDriver } from '../models/Driver';
 import Vehicle from '../models/Vehicle';
 import { generateToken } from '../utils/token';
 import { uploadToCloudinary, deleteFromCloudinary } from '../utils/cloudinary';
@@ -495,7 +495,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
         }
       });
     } else {
-      const driver = user as Driver;
+      const driver = user as IDriver;
       res.json({
         message: 'Login successful',
         token,

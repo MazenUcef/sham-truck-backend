@@ -274,20 +274,23 @@ export const getDriverOrders = async (req: AuthenticatedRequest, res: Response):
             return;
         }
 
-        const driver = await Driver.findById(id).populate('vehicleType');
+        // Populate with proper typing
+        const driver = await Driver.findById(id).populate<{ vehicleType: any }>('vehicleType');
         if (!driver) {
             res.status(404).json({ message: 'Driver not found' });
             return;
         }
 
-        const driverVehicleId = driver.vehicleType._id;
+        // Type assertion to tell TypeScript that vehicleType is populated
+        const populatedDriver = driver as any;
+        const driverVehicleCategory = populatedDriver.vehicleType.category;
 
         const orders = await Order.find({
             status: 'Pending',
         })
             .populate({
                 path: 'vehicle_type',
-                match: { id: driverVehicleId },
+                match: { category: driverVehicleCategory },
             })
             .populate({
                 path: 'customer_id',

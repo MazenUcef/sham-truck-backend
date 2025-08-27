@@ -1,6 +1,7 @@
 import { Document, Types, Schema, Model, model } from 'mongoose';
+import { Vehicle } from './Vehicle';
 
-interface Driver extends Document {
+export interface IDriver extends Document {
   _id: Types.ObjectId;
   fullName: string;
   email: string;
@@ -14,8 +15,12 @@ interface Driver extends Document {
   updatedAt: Date;
 }
 
+export interface IPopulatedDriver extends Omit<IDriver, 'vehicleType'> {
+  vehicleType: Vehicle;
+}
 
-const driverSchema: Schema<Driver> = new Schema({
+
+const driverSchema: Schema<IDriver> = new Schema({
   fullName: {
     type: String,
     required: true,
@@ -59,6 +64,6 @@ const driverSchema: Schema<Driver> = new Schema({
   timestamps: true
 });
 
-const Driver: Model<Driver> = model<Driver>('Driver', driverSchema);
+const Driver: Model<IDriver> = model<IDriver>('Driver', driverSchema);
 
 export default Driver;
