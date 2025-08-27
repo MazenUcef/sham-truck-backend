@@ -28,7 +28,7 @@ const app = express();
 const server = createServer(app);
 const io = new SocketIOServer(server, {
     cors: {
-        origin: process.env.CLIENT_URL || "http://localhost:3000",
+        origin: process.env.CLIENT_URL || "https://sham-truck-backend-1.onrender.com",
         methods: ["GET", "POST", "put", "DELETE"]
     }
 });
