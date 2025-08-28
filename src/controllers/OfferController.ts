@@ -296,15 +296,6 @@ export const acceptOffer = async (req: AuthenticatedRequest, res: Response): Pro
       is_read: false,
     });
 
-    await Notification.create({
-      user_id: id,
-      order_id: offer.order_id,
-      type: 'offer_accepted',
-      title: 'تم قبول العرض',
-      message: 'لقد قبلت عرضًا',
-      is_read: false,
-    });
-
     const rejectedOffers = await Offer.find({
       order_id: offer.order_id,
       _id: { $ne: offer._id },
