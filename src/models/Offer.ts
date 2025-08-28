@@ -1,8 +1,11 @@
-import mongoose, { Document, Schema } from 'mongoose';
+import mongoose, { Document, Schema, Types } from 'mongoose';
+import { IDriver, IPopulatedDriver } from './Driver';
+import { IOrder } from './Order';
 
 export interface IOffer extends Document {
-  order_id: mongoose.Types.ObjectId;
-  driver_id: mongoose.Types.ObjectId;
+  _id: Types.ObjectId;
+  order_id: Types.ObjectId | IOrder;
+  driver_id: Types.ObjectId | IPopulatedDriver;
   price: number;
   notes?: string;
   status: 'Accepted' | 'Rejected' | 'Pending' | 'Expired';

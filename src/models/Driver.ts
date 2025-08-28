@@ -48,8 +48,8 @@ const driverSchema: Schema<IDriver> = new Schema({
     unique: true,
   },
   vehicleType: {
-    type: Schema.Types.ObjectId, // Store only ObjectId
-    ref: 'Vehicle', // Reference to Vehicle model
+    type: Schema.Types.ObjectId,
+    ref: 'Vehicle',
     required: true,
   },
   photo: {

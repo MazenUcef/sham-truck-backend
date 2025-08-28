@@ -32,7 +32,7 @@ const notificationSchema = new Schema<INotification>(
     },
     type: {
       type: String,
-      enum: ['new_offer', 'offer_accepted', 'offer_rejected', 'order_created', 'order_updated', 'order_completed', 'ring', 'new_order_available'],
+      enum: ['new_offer', 'offer_accepted', 'offer_rejected', 'order_created', 'order_updated', 'order_completed', 'ring', 'new_order_available','offer_created'],
       required: true,
     },
     title: {
