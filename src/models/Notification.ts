@@ -17,7 +17,7 @@ const notificationSchema = new Schema<INotification>(
   {
     user_id: {
       type: Schema.Types.ObjectId,
-      ref: 'Router',
+      ref: 'User',
       required: false,
     },
     driver_id: {
