@@ -22,8 +22,8 @@ interface OfferCreateData {
 }
 
 export const validateOfferCreate = [
-    body('order_id').isMongoId().withMessage('Invalid order ID'),
-    body('price').isNumeric().withMessage('Price must be a number').isFloat({ min: 0 }).withMessage('Price must be positive'),
+    body('order_id').isMongoId().withMessage('معرف الطلب غير صالح'),
+    body('price').isNumeric().withMessage('يجب أن يكون السعر رقمًا').isFloat({ min: 0 }).withMessage('يجب أن يكون السعر موجبًا'),
     body('notes').optional().trim(),
 ];
 
@@ -37,7 +37,7 @@ export const createOffer = async (req: AuthenticatedRequest, res: Response): Pro
 
         const { id, role } = req.user!;
         if (role !== 'driver') {
-            res.status(403).json({ message: 'Unauthorized: Only drivers can create offers' });
+            res.status(403).json({ message: 'غير مصرح: يمكن للسائقين فقط إنشاء العروض' });
             return;
         }
 
@@ -45,13 +45,13 @@ export const createOffer = async (req: AuthenticatedRequest, res: Response): Pro
 
         const order = await Order.findById(order_id);
         if (!order) {
-            res.status(404).json({ message: 'Order not found' });
+            res.status(404).json({ message: 'الطلب غير موجود' });
             return;
         }
 
         const existingOffer = await Offer.findOne({ order_id, driver_id: id });
         if (existingOffer) {
-            res.status(400).json({ message: 'You already have an offer for this order' });
+            res.status(400).json({ message: 'لديك بالفعل عرض لهذا الطلب' });
             return;
         }
 
@@ -63,45 +63,39 @@ export const createOffer = async (req: AuthenticatedRequest, res: Response): Pro
             status: 'Pending',
         });
 
-
         const populatedOffer = await Offer.findById(offer._id)
             .populate('driver_id')
             .populate('order_id');
-
 
         await Notification.create({
             user_id: order.customer_id, 
             driver_id: id, 
             order_id: order_id,
             type: 'new_offer',
-            title: 'New Offer Received',
-            message: `You have received a new offer of $${price} for your order`,
+            title: 'تم استلام عرض جديد',
+            message: `لقد تلقيت عرضًا جديدًا بقيمة ${price} دولار لطلبك`,
             is_read: false,
         });
 
-
         if (req.io) {
-
             req.io.to(`user-${order.customer_id}`).emit('new-offer', {
-                message: 'New offer received for your order',
+                message: 'تم استلام عرض جديد لطلبك',
                 offer: populatedOffer
             });
 
-           
             req.io.to(`driver-${id}`).emit('offer-created', {
-                message: 'Your offer has been submitted successfully',
+                message: 'تم تقديم عرضك بنجاح',
                 offer: populatedOffer
             });
 
-           
             req.io.to(`user-${order.customer_id}`).emit('new-notification', {
-                title: 'New Offer Received',
-                message: `You have received a new offer of $${price} for your order`
+                title: 'تم استلام عرض جديد',
+                message: `لقد تلقيت عرضًا جديدًا بقيمة ${price} دولار لطلبك`
             });
         }
 
         res.status(201).json({
-            message: 'Offer created successfully',
+            message: 'تم إنشاء العرض بنجاح',
             offer: {
                 id: offer._id,
                 order_id: offer.order_id,
@@ -110,12 +104,12 @@ export const createOffer = async (req: AuthenticatedRequest, res: Response): Pro
                 notes: offer.notes,
                 status: offer.status,
                 createdAt: offer.createdAt,
-                updatedAt: offer.updatedAt,
+                updatedAt: order.updatedAt,
             },
         });
     } catch (error: any) {
         res.status(500).json({
-            message: 'Error creating offer',
+            message: 'خطأ في إنشاء العرض',
             error: error.message,
         });
     }
@@ -125,14 +119,14 @@ export const getDriverOffers = async (req: AuthenticatedRequest, res: Response):
     try {
         const { id, role } = req.user!;
         if (role !== 'driver') {
-            res.status(403).json({ message: 'Unauthorized: Only drivers can access their offers' });
+            res.status(403).json({ message: 'غير مصرح: يمكن للسائقين فقط الوصول إلى عروضهم' });
             return;
         }
 
         const offers = await Offer.find({ driver_id: id }).populate('order_id');
 
         res.json({
-            message: 'Offers retrieved successfully',
+            message: 'تم استرجاع العروض بنجاح',
             offers: offers.map((offer) => ({
                 id: offer._id,
                 order_id: offer.order_id,
@@ -145,7 +139,7 @@ export const getDriverOffers = async (req: AuthenticatedRequest, res: Response):
         });
     } catch (error: any) {
         res.status(500).json({
-            message: 'Error retrieving offers',
+            message: 'خطأ في استرجاع العروض',
             error: error.message,
         });
     }
@@ -155,19 +149,19 @@ export const getOrderOffers = async (req: AuthenticatedRequest, res: Response): 
     try {
         const { id, role } = req.user!;
         if (role !== 'router') {
-            res.status(403).json({ message: 'Unauthorized: Only routers can access their order offers' });
+            res.status(403).json({ message: 'غير مصرح: يمكن للراوتر فقط الوصول إلى عروض طلباتهم' });
             return;
         }
 
         const orderId = req.params.id;
         if (!mongoose.Types.ObjectId.isValid(orderId)) {
-            res.status(400).json({ message: 'Invalid order ID' });
+            res.status(400).json({ message: 'معرف الطلب غير صالح' });
             return;
         }
 
         const order = await Order.findOne({ _id: orderId, customer_id: id });
         if (!order) {
-            res.status(404).json({ message: 'Order not found or you do not have access to this order' });
+            res.status(404).json({ message: 'الطلب غير موجود أو ليس لديك الوصول إلى هذا الطلب' });
             return;
         }
 
@@ -178,7 +172,7 @@ export const getOrderOffers = async (req: AuthenticatedRequest, res: Response): 
         }
 
         res.json({
-            message: 'Offers retrieved successfully',
+            message: 'تم استرجاع العروض بنجاح',
             offers: offers.map((offer) => ({
                 id: offer._id,
                 driver_id: offer.driver_id,
@@ -191,7 +185,7 @@ export const getOrderOffers = async (req: AuthenticatedRequest, res: Response): 
         });
     } catch (error: any) {
         res.status(500).json({
-            message: 'Error retrieving offers',
+            message: 'خطأ في استرجاع العروض',
             error: error.message,
         });
     }
@@ -201,30 +195,30 @@ export const acceptOffer = async (req: AuthenticatedRequest, res: Response): Pro
     try {
         const { id, role } = req.user!;
         if (role !== 'router') {
-            res.status(403).json({ message: 'Unauthorized: Only routers can accept offers' });
+            res.status(403).json({ message: 'غير مصرح: يمكن للراوتر فقط قبول العروض' });
             return;
         }
 
         const offerId = req.params.id;
         if (!mongoose.Types.ObjectId.isValid(offerId)) {
-            res.status(400).json({ message: 'Invalid offer ID' });
+            res.status(400).json({ message: 'معرف العرض غير صالح' });
             return;
         }
 
         const offer = await Offer.findById(offerId);
         if (!offer) {
-            res.status(404).json({ message: 'Offer not found' });
+            res.status(404).json({ message: 'العرض غير موجود' });
             return;
         }
 
         const order = await Order.findOne({ _id: offer.order_id, customer_id: id });
         if (!order) {
-            res.status(404).json({ message: 'Order not found or you do not have access to this order' });
+            res.status(404).json({ message: 'الطلب غير موجود أو ليس لديك الوصول إلى هذا الطلب' });
             return;
         }
 
         if (offer.status !== 'Pending') {
-            res.status(400).json({ message: 'Offer cannot be accepted as it is not pending' });
+            res.status(400).json({ message: 'لا يمكن قبول العرض لأنه ليس قيد الانتظار' });
             return;
         }
 
@@ -236,21 +230,18 @@ export const acceptOffer = async (req: AuthenticatedRequest, res: Response): Pro
             { $set: { status: 'Rejected' } }
         );
 
-        
         await Order.findByIdAndUpdate(offer.order_id, { status: 'Active' });
 
-        
         const populatedOffer = await Offer.findById(offer._id)
             .populate('driver_id')
-            .populate('order_id');;
+            .populate('order_id');
 
-        
         await Notification.create({
             driver_id: offer.driver_id, 
             order_id: offer.order_id,
             type: 'offer_accepted',
-            title: 'Offer Accepted',
-            message: 'Your offer has been accepted!',
+            title: 'تم قبول العرض',
+            message: 'تم قبول عرضك!',
             is_read: false,
         });
 
@@ -258,12 +249,11 @@ export const acceptOffer = async (req: AuthenticatedRequest, res: Response): Pro
             user_id: id,
             order_id: offer.order_id,
             type: 'offer_accepted',
-            title: 'Offer Accepted',
-            message: 'You have accepted an offer',
+            title: 'تم قبول العرض',
+            message: 'لقد قبلت عرضًا',
             is_read: false,
         });
 
-   
         const rejectedOffers = await Offer.find({
             order_id: offer.order_id,
             _id: { $ne: offer._id }
@@ -274,55 +264,50 @@ export const acceptOffer = async (req: AuthenticatedRequest, res: Response): Pro
                 driver_id: rejectedOffer.driver_id,
                 order_id: offer.order_id,
                 type: 'offer_rejected',
-                title: 'Offer Not Selected',
-                message: 'Your offer was not selected for this order',
+                title: 'لم يتم اختيار العرض',
+                message: 'لم يتم اختيار عرضك لهذا الطلب',
                 is_read: false,
             });
         }
 
-        
         if (req.io) {
-            
             req.io.to(`driver-${offer.driver_id}`).emit('offer-accepted', {
-                message: 'Your offer has been accepted',
+                message: 'تم قبول عرضك',
                 offer: populatedOffer
             });
 
-           
             req.io.to(`user-${id}`).emit('offer-accepted-confirmation', {
-                message: 'Offer accepted successfully',
+                message: 'تم قبول العرض بنجاح',
                 offer: populatedOffer
             });
 
-          
             rejectedOffers.forEach(rejectedOffer => {
                 req?.io?.to(`driver-${rejectedOffer.driver_id}`).emit('offer-rejected', {
-                    message: 'Your offer was not selected',
+                    message: 'لم يتم اختيار عرضك',
                     order_id: rejectedOffer.order_id
                 });
             });
 
-           
             req.io.to(`driver-${offer.driver_id}`).emit('new-notification', {
-                title: 'Offer Accepted',
-                message: 'Your offer has been accepted!'
+                title: 'تم قبول العرض',
+                message: 'تم قبول عرضك!'
             });
 
             req.io.to(`user-${id}`).emit('new-notification', {
-                title: 'Offer Accepted',
-                message: 'You have accepted an offer'
+                title: 'تم قبول العرض',
+                message: 'لقد قبلت عرضًا'
             });
 
             rejectedOffers.forEach(rejectedOffer => {
                 req?.io?.to(`driver-${rejectedOffer.driver_id}`).emit('new-notification', {
-                    title: 'Offer Not Selected',
-                    message: 'Your offer was not selected for this order'
+                    title: 'لم يتم اختيار العرض',
+                    message: 'لم يتم اختيار عرضك لهذا الطلب'
                 });
             });
         }
 
         res.json({
-            message: 'Offer accepted successfully',
+            message: 'تم قبول العرض بنجاح',
             offer: {
                 id: offer._id,
                 order_id: offer.order_id,
@@ -336,7 +321,7 @@ export const acceptOffer = async (req: AuthenticatedRequest, res: Response): Pro
         });
     } catch (error: any) {
         res.status(500).json({
-            message: 'Error accepting offer',
+            message: 'خطأ في قبول العرض',
             error: error.message,
         });
     }

@@ -28,19 +28,18 @@ interface OrderCreateData {
 }
 
 export const validateOrderCreate = [
-    body('from_location').trim().notEmpty().withMessage('From location is required'),
-    body('to_location').trim().notEmpty().withMessage('To location is required'),
-    body('vehicle_type').isMongoId().withMessage('Invalid vehicle type ID'),
-    body('weight_or_volume').trim().notEmpty().withMessage('Weight or volume is required'),
+    body('from_location').trim().notEmpty().withMessage('الموقع الابتدائي مطلوب'),
+    body('to_location').trim().notEmpty().withMessage('الموقع النهائي مطلوب'),
+    body('vehicle_type').isMongoId().withMessage('معرف نوع المركبة غير صالح'),
+    body('weight_or_volume').trim().notEmpty().withMessage('الوزن أو الحجم مطلوب'),
     body('date_time_transport')
         .isISO8601()
         .toDate()
-        .withMessage('Invalid date and time for transport'),
-    body('loading_time').trim().notEmpty().withMessage('Loading time is required'),
-    body('type').trim().notEmpty().withMessage('Order type is required'),
+        .withMessage('تاريخ ووقت النقل غير صالح'),
+    body('loading_time').trim().notEmpty().withMessage('وقت التحميل مطلوب'),
+    body('type').trim().notEmpty().withMessage('نوع الطلب مطلوب'),
     body('notes').optional().trim(),
 ];
-
 
 export const createOrder = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
@@ -52,7 +51,7 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response): Pro
 
         const { id, role } = req.user!;
         if (role !== 'router') {
-            res.status(403).json({ message: 'Unauthorized: Only routers can create orders' });
+            res.status(403).json({ message: 'غير مصرح: يمكن للراوتر فقط إنشاء الطلبات' });
             return;
         }
 
@@ -71,7 +70,7 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response): Pro
         console.log('Order vehicle_type:', vehicle_type);
         const vehicleType = await Vehicle.findById(vehicle_type);
         if (!vehicleType) {
-            res.status(400).json({ message: 'Invalid vehicle type ID' });
+            res.status(400).json({ message: 'معرف نوع المركبة غير صالح' });
             return;
         }
         console.log('Found vehicle:', vehicleType);
@@ -91,18 +90,16 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response): Pro
         });
         console.log('Created order:', order._id);
 
-        // Notify the router who created the order
         await Notification.create({
             user_id: id,
             order_id: order._id,
             type: 'order_created',
-            title: 'Order Created',
-            message: 'Your order has been created successfully',
+            title: 'تم إنشاء الطلب',
+            message: 'تم إنشاء طلبك بنجاح',
             is_read: false,
         });
         console.log('Router notification created for user_id:', id);
 
-        // Find drivers with vehicles in the same category
         const drivers = await Driver.find()
             .populate({
                 path: 'vehicleType',
@@ -111,17 +108,15 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response): Pro
             })
             .select('_id fullName vehicleNumber')
             .lean();
-        // Filter out drivers where vehicleType is null (i.e., no matching category)
         const matchingDrivers = drivers.filter(driver => driver.vehicleType !== null);
         console.log('Matching drivers (by vehicle category):', matchingDrivers);
 
-        // Create notifications for each matching driver
         const driverNotifications = matchingDrivers.map(driver => ({
             driver_id: driver._id,
             order_id: order._id,
             type: 'new_order_available',
-            title: 'New Order Available',
-            message: `A new order matching your vehicle category is available: ${order.from_location} to ${order.to_location}`,
+            title: 'طلب جديد متاح',
+            message: `طلب جديد يتطابق مع فئة مركبتك متاح: من ${order.from_location} إلى ${order.to_location}`,
             is_read: false,
         }));
         console.log('Driver notifications to create:', driverNotifications);
@@ -137,7 +132,6 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response): Pro
             console.log('No driver notifications created (no matching drivers)');
         }
 
-        // Populate the order for response and socket emissions
         const populatedOrder = await Order.findById(order._id)
             .populate('vehicle_type')
             .populate({
@@ -145,7 +139,6 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response): Pro
                 select: '-password'
             });
 
-        // Emit Socket.IO events
         if (req.io) {
             console.log('Socket.IO instance available:', req.io);
             req.io.emit('new-order-available', {
@@ -164,20 +157,20 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response): Pro
             });
 
             req.io.to(`user-${id}`).emit('order-created', {
-                message: 'Your order has been created successfully',
+                message: 'تم إنشاء طلبك بنجاح',
                 order: populatedOrder
             });
 
             req.io.to(`user-${id}`).emit('new-notification', {
-                title: 'Order Created',
-                message: 'Your order has been created successfully'
+                title: 'تم إنشاء الطلب',
+                message: 'تم إنشاء طلبك بنجاح'
             });
 
             matchingDrivers.forEach(driver => {
                 console.log(`Emitting new-notification to driver-${driver._id}`);
                 req.io!.to(`driver-${driver._id}`).emit('new-notification', {
-                    title: 'New Order Available',
-                    message: `A new order matching your vehicle category is available: ${order.from_location} to ${order.to_location}`
+                    title: 'طلب جديد متاح',
+                    message: `طلب جديد يتطابق مع فئة مركبتك متاح: من ${order.from_location} إلى ${order.to_location}`
                 });
             });
         } else {
@@ -185,7 +178,7 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response): Pro
         }
 
         res.status(201).json({
-            message: 'Order created successfully',
+            message: 'تم إنشاء الطلب بنجاح',
             order: {
                 id: populatedOrder!._id,
                 customer: populatedOrder!.customer_id,
@@ -205,16 +198,17 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response): Pro
     } catch (error: any) {
         console.error('Create order error:', error);
         res.status(500).json({
-            message: 'Error creating order',
+            message: 'خطأ في إنشاء الطلب',
             error: error.message,
         });
     }
 };
+
 export const getRouterOrders = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
         const { id, role } = req.user!;
         if (role !== 'router') {
-            res.status(403).json({ message: 'Unauthorized: Only routers can access their orders' });
+            res.status(403).json({ message: 'غير مصرح: يمكن للراوتر فقط الوصول إلى طلباتهم' });
             return;
         }
 
@@ -230,7 +224,7 @@ export const getRouterOrders = async (req: AuthenticatedRequest, res: Response):
         }
 
         res.json({
-            message: 'Orders retrieved successfully',
+            message: 'تم استرجاع الطلبات بنجاح',
             orders: orders.map((order) => ({
                 id: order._id,
                 customer: order.customer_id,
@@ -249,7 +243,7 @@ export const getRouterOrders = async (req: AuthenticatedRequest, res: Response):
         });
     } catch (error: any) {
         res.status(500).json({
-            message: 'Error retrieving orders',
+            message: 'خطأ في استرجاع الطلبات',
             error: error.message,
         });
     }
@@ -259,13 +253,13 @@ export const getOrderById = async (req: AuthenticatedRequest, res: Response): Pr
     try {
         const { id, role } = req.user!;
         if (role !== 'router') {
-            res.status(403).json({ message: 'Unauthorized: Only routers can access their orders' });
+            res.status(403).json({ message: 'غير مصرح: يمكن للراوتر فقط الوصول إلى طلباتهم' });
             return;
         }
 
         const orderId = req.params.id;
         if (!mongoose.Types.ObjectId.isValid(orderId)) {
-            res.status(400).json({ message: 'Invalid order ID' });
+            res.status(400).json({ message: 'معرف الطلب غير صالح' });
             return;
         }
 
@@ -277,12 +271,12 @@ export const getOrderById = async (req: AuthenticatedRequest, res: Response): Pr
             });
 
         if (!order) {
-            res.status(404).json({ message: 'Order not found or you do not have access to this order' });
+            res.status(404).json({ message: 'الطلب غير موجود أو ليس لديك الوصول إلى هذا الطلب' });
             return;
         }
 
         res.json({
-            message: 'Order retrieved successfully',
+            message: 'تم استرجاع الطلب بنجاح',
             order: {
                 id: order._id,
                 customer: order.customer_id,
@@ -301,7 +295,7 @@ export const getOrderById = async (req: AuthenticatedRequest, res: Response): Pr
         });
     } catch (error: any) {
         res.status(500).json({
-            message: 'Error retrieving order',
+            message: 'خطأ في استرجاع الطلب',
             error: error.message,
         });
     }
@@ -311,18 +305,16 @@ export const getDriverOrders = async (req: AuthenticatedRequest, res: Response):
     try {
         const { id, role } = req.user!;
         if (role !== 'driver') {
-            res.status(403).json({ message: 'Unauthorized: Only drivers can access orders' });
+            res.status(403).json({ message: 'غير مصرح: يمكن للسائقين فقط الوصول إلى الطلبات' });
             return;
         }
 
-        // Populate with proper typing
         const driver = await Driver.findById(id).populate<{ vehicleType: any }>('vehicleType');
         if (!driver) {
-            res.status(404).json({ message: 'Driver not found' });
+            res.status(404).json({ message: 'السائق غير موجود' });
             return;
         }
 
-        // Type assertion to tell TypeScript that vehicleType is populated
         const populatedDriver = driver as any;
         const driverVehicleCategory = populatedDriver.vehicleType.category;
 
@@ -346,7 +338,7 @@ export const getDriverOrders = async (req: AuthenticatedRequest, res: Response):
         }
 
         res.json({
-            message: 'Orders retrieved successfully',
+            message: 'تم استرجاع الطلبات بنجاح',
             orders: filteredOrders.map((order) => ({
                 id: order._id,
                 customer: order.customer_id,
@@ -365,7 +357,7 @@ export const getDriverOrders = async (req: AuthenticatedRequest, res: Response):
         });
     } catch (error: any) {
         res.status(500).json({
-            message: 'Error retrieving orders',
+            message: 'خطأ في استرجاع الطلبات',
             error: error.message,
         });
     }

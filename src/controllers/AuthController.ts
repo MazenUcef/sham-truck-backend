@@ -31,7 +31,6 @@ interface DriverUpdateData extends UserUpdateData {
     vehicleTypeId?: string;
 }
 
-
 interface LoginData {
     email: string;
     password: string;
@@ -51,37 +50,33 @@ interface AuthenticatedRequest extends Request {
     };
 }
 
-
 export const validateDriverSignup = [
-    body('fullName').trim().notEmpty().withMessage('Full name is required'),
-    body('email').isEmail().normalizeEmail().withMessage('Invalid email address'),
+    body('fullName').trim().notEmpty().withMessage('الاسم الكامل مطلوب'),
+    body('email').isEmail().normalizeEmail().withMessage('عنوان البريد الإلكتروني غير صالح'),
     body('password')
-        .isLength({ min: 8 })
-        .withMessage('Password must be at least 8 characters long'),
+        .isLength({ min: 6 })
+        .withMessage('يجب أن تكون كلمة المرور 6 أحرف على الأقل'),
     body('phoneNumber')
-        .trim().notEmpty().withMessage('Phone Number is required'),
-    body('vehicleNumber').trim().notEmpty().withMessage('Vehicle number is required'),
-    body('vehicleTypeId').isMongoId().withMessage('Invalid vehicle type ID'),
+        .trim().notEmpty().withMessage('رقم الهاتف مطلوب'),
+    body('vehicleNumber').trim().notEmpty().withMessage('رقم المركبة مطلوب'),
+    body('vehicleTypeId').isMongoId().withMessage('معرف نوع المركبة غير صالح'),
 ];
-
 
 export const validateUserUpdate = [
-    body('fullName').optional().trim().notEmpty().withMessage('Full name cannot be empty'),
-    body('email').optional().isEmail().normalizeEmail().withMessage('Invalid email address'),
+    body('fullName').optional().trim().notEmpty().withMessage('لا يمكن أن يكون الاسم الكامل فارغًا'),
+    body('email').optional().isEmail().normalizeEmail().withMessage('عنوان البريد الإلكتروني غير صالح'),
     body('phoneNumber')
-        .trim().notEmpty().withMessage('Phone Number is required'),
+        .trim().notEmpty().withMessage('رقم الهاتف مطلوب'),
 ];
-
 
 export const validateDriverUpdate = [
-    body('fullName').optional().trim().notEmpty().withMessage('Full name cannot be empty'),
-    body('email').optional().isEmail().normalizeEmail().withMessage('Invalid email address'),
+    body('fullName').optional().trim().notEmpty().withMessage('لا يمكن أن يكون الاسم الكامل فارغًا'),
+    body('email').optional().isEmail().normalizeEmail().withMessage('عنوان البريد الإلكتروني غير صالح'),
     body('phoneNumber')
-        .trim().notEmpty().withMessage('Phone Number is required'),
-    body('vehicleNumber').optional().trim().notEmpty().withMessage('Vehicle number cannot be empty'),
-    body('vehicleTypeId').optional().isMongoId().withMessage('Invalid vehicle type ID'),
+        .trim().notEmpty().withMessage('رقم الهاتف مطلوب'),
+    body('vehicleNumber').optional().trim().notEmpty().withMessage('لا يمكن أن يكون رقم المركبة فارغًا'),
+    body('vehicleTypeId').optional().isMongoId().withMessage('معرف نوع المركبة غير صالح'),
 ];
-
 
 export const signupUser = async (req: Request, res: Response): Promise<void> => {
     try {
@@ -99,7 +94,7 @@ export const signupUser = async (req: Request, res: Response): Promise<void> => 
 
         if (existingUser) {
             res.status(400).json({
-                message: 'User already exists with this email or phone number'
+                message: 'المستخدم موجود بالفعل مع هذا البريد الإلكتروني أو رقم الهاتف'
             });
             return;
         }
@@ -120,7 +115,7 @@ export const signupUser = async (req: Request, res: Response): Promise<void> => 
         });
 
         res.status(201).json({
-            message: 'User created successfully',
+            message: 'تم إنشاء المستخدم بنجاح',
             token,
             user: {
                 id: user._id,
@@ -132,17 +127,15 @@ export const signupUser = async (req: Request, res: Response): Promise<void> => 
         });
     } catch (error: any) {
         res.status(500).json({
-            message: 'Error creating user',
+            message: 'خطأ في إنشاء المستخدم',
             error: error.message
         });
     }
 };
 
-
 export const signupDriver = async (req: Request, res: Response): Promise<void> => {
     let photoPublicId = '';
     try {
-        // Validate request body
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
             res.status(400).json({ errors: errors.array() });
@@ -151,7 +144,6 @@ export const signupDriver = async (req: Request, res: Response): Promise<void> =
 
         const { fullName, email, password, phoneNumber, vehicleNumber, vehicleTypeId }: DriverSignupData = req.body;
 
-        // Check for existing user or driver
         const existingUser = await User.findOne({
             $or: [{ email }, { phoneNumber }],
         });
@@ -160,24 +152,21 @@ export const signupDriver = async (req: Request, res: Response): Promise<void> =
         });
 
         if (existingUser || existingDriver) {
-            res.status(400).json({ errors: [{ msg: 'Email, phone number, or vehicle number already exists', path: 'email or phoneNumber or vehicleNumber' }] });
+            res.status(400).json({ errors: [{ msg: 'البريد الإلكتروني أو رقم الهاتف أو رقم المركبة موجود بالفعل', path: 'email or phoneNumber or vehicleNumber' }] });
             return;
         }
 
-        // Validate vehicleTypeId as a MongoDB ObjectId
         if (!mongoose.Types.ObjectId.isValid(vehicleTypeId)) {
-            res.status(400).json({ errors: [{ msg: 'Invalid vehicle type ID', path: 'vehicleTypeId', value: vehicleTypeId }] });
+            res.status(400).json({ errors: [{ msg: 'معرف نوع المركبة غير صالح', path: 'vehicleTypeId', value: vehicleTypeId }] });
             return;
         }
 
-        // Check if vehicle type exists
         const vehicleType = await Vehicle.findById(vehicleTypeId);
         if (!vehicleType) {
-            res.status(400).json({ errors: [{ msg: 'Vehicle type not found', path: 'vehicleTypeId' }] });
+            res.status(400).json({ errors: [{ msg: 'نوع المركبة غير موجود', path: 'vehicleTypeId' }] });
             return;
         }
 
-        // Handle photo upload
         let photo = '';
         if (req.file) {
             try {
@@ -186,36 +175,32 @@ export const signupDriver = async (req: Request, res: Response): Promise<void> =
                 photoPublicId = uploadResult.public_id;
             } catch (uploadError) {
                 console.error('Cloudinary upload error:', uploadError);
-                res.status(500).json({ errors: [{ msg: 'Failed to upload photo' }] });
+                res.status(500).json({ errors: [{ msg: 'فشل في رفع الصورة' }] });
                 return;
             }
         }
 
-        // Hash password
         const hashedPassword = await bcrypt.hash(password, 12);
 
-        // Create driver - store only the vehicleType ID
         const driver = await Driver.create({
             fullName,
             email,
             password: hashedPassword,
             phoneNumber,
             vehicleNumber,
-            vehicleType: vehicleTypeId, // Store only the ID
+            vehicleType: vehicleTypeId,
             photo,
             photoPublicId,
         });
 
-        // Generate JWT token
         const token = generateToken({
             id: driver._id.toString(),
             role: 'driver',
             fullName: driver.fullName,
         });
 
-        // Send response with vehicleTypeId
         res.status(201).json({
-            message: 'Driver created successfully',
+            message: 'تم إنشاء السائق بنجاح',
             token,
             driver: {
                 id: driver._id,
@@ -223,7 +208,7 @@ export const signupDriver = async (req: Request, res: Response): Promise<void> =
                 email: driver.email,
                 phoneNumber: driver.phoneNumber,
                 vehicleNumber: driver.vehicleNumber,
-                vehicleTypeId, // Return only the ID
+                vehicleTypeId,
                 photo: driver.photo,
                 role: 'driver',
             },
@@ -238,11 +223,10 @@ export const signupDriver = async (req: Request, res: Response): Promise<void> =
             }
         }
         res.status(500).json({
-            errors: [{ msg: 'Error creating driver', error: error.message }],
+            errors: [{ msg: 'خطأ في إنشاء السائق', error: error.message }],
         });
     }
 };
-
 
 export const updateUser = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
@@ -254,7 +238,7 @@ export const updateUser = async (req: AuthenticatedRequest, res: Response): Prom
 
         const { id, role } = req.user!;
         if (role !== 'router') {
-            res.status(403).json({ message: 'Unauthorized: Only routers can update their profile' });
+            res.status(403).json({ message: 'غير مصرح: يمكن للراوتر فقط تحديث ملفهم الشخصي' });
             return;
         }
 
@@ -273,19 +257,19 @@ export const updateUser = async (req: AuthenticatedRequest, res: Response): Prom
                 ],
             });
             if (existingUser) {
-                res.status(400).json({ message: 'Email or phone number already in use' });
+                res.status(400).json({ message: 'البريد الإلكتروني أو رقم الهاتف مستخدم بالفعل' });
                 return;
             }
         }
 
         const user = await User.findByIdAndUpdate(id, updateData, { new: true });
         if (!user) {
-            res.status(404).json({ message: 'User not found' });
+            res.status(404).json({ message: 'المستخدم غير موجود' });
             return;
         }
 
         res.json({
-            message: 'User updated successfully',
+            message: 'تم تحديث المستخدم بنجاح',
             user: {
                 id: user._id,
                 fullName: user.fullName,
@@ -296,12 +280,11 @@ export const updateUser = async (req: AuthenticatedRequest, res: Response): Prom
         });
     } catch (error: any) {
         res.status(500).json({
-            message: 'Error updating user',
+            message: 'خطأ في تحديث المستخدم',
             error: error.message
         });
     }
 };
-
 
 export const updateDriver = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     let photoPublicId = '';
@@ -314,7 +297,7 @@ export const updateDriver = async (req: AuthenticatedRequest, res: Response): Pr
 
         const { id, role } = req.user!;
         if (role !== 'driver') {
-            res.status(403).json({ message: 'Unauthorized: Only drivers can update their profile' });
+            res.status(403).json({ message: 'غير مصرح: يمكن للسائقين فقط تحديث ملفهم الشخصي' });
             return;
         }
 
@@ -326,22 +309,19 @@ export const updateDriver = async (req: AuthenticatedRequest, res: Response): Pr
         if (phoneNumber) updateData.phoneNumber = phoneNumber;
         if (vehicleNumber) updateData.vehicleNumber = vehicleNumber;
         if (vehicleTypeId) {
-            // Validate vehicleTypeId
             if (!mongoose.Types.ObjectId.isValid(vehicleTypeId)) {
-                res.status(400).json({ message: 'Invalid vehicle type ID' });
+                res.status(400).json({ message: 'معرف نوع المركبة غير صالح' });
                 return;
             }
 
-            // Check if vehicle type exists
             const vehicleType = await Vehicle.findById(vehicleTypeId);
             if (!vehicleType) {
-                res.status(400).json({ message: 'Vehicle type not found' });
+                res.status(400).json({ message: 'نوع المركبة غير موجود' });
                 return;
             }
 
-            updateData.vehicleType = vehicleTypeId; // Store only the ID
+            updateData.vehicleType = vehicleTypeId;
         }
-
 
         if (email || phoneNumber || vehicleNumber) {
             const existingUser = await User.findOne({
@@ -359,7 +339,7 @@ export const updateDriver = async (req: AuthenticatedRequest, res: Response): Pr
                 ],
             });
             if (existingUser || existingDriver) {
-                res.status(400).json({ message: 'Email, phone number, or vehicle number already in use' });
+                res.status(400).json({ message: 'البريد الإلكتروني أو رقم الهاتف أو رقم المركبة مستخدم بالفعل' });
                 return;
             }
         }
@@ -372,7 +352,7 @@ export const updateDriver = async (req: AuthenticatedRequest, res: Response): Pr
                 updateData.photoPublicId = photoPublicId;
             } catch (uploadError) {
                 console.error('Cloudinary upload error:', uploadError);
-                res.status(500).json({ message: 'Failed to upload photo' });
+                res.status(500).json({ message: 'فشل في رفع الصورة' });
                 return;
             }
         }
@@ -386,7 +366,7 @@ export const updateDriver = async (req: AuthenticatedRequest, res: Response): Pr
                     console.error('Error cleaning up new Cloudinary image:', deleteError);
                 }
             }
-            res.status(404).json({ message: 'Driver not found' });
+            res.status(404).json({ message: 'السائق غير موجود' });
             return;
         }
 
@@ -407,12 +387,12 @@ export const updateDriver = async (req: AuthenticatedRequest, res: Response): Pr
                     console.error('Error cleaning up new Cloudinary image:', deleteError);
                 }
             }
-            res.status(404).json({ message: 'Driver not found' });
+            res.status(404).json({ message: 'السائق غير موجود' });
             return;
         }
 
         res.json({
-            message: 'Driver updated successfully',
+            message: 'تم تحديث السائق بنجاح',
             driver: {
                 id: updatedDriver._id,
                 fullName: updatedDriver.fullName,
@@ -434,7 +414,7 @@ export const updateDriver = async (req: AuthenticatedRequest, res: Response): Pr
             }
         }
         res.status(500).json({
-            message: 'Error updating driver',
+            message: 'خطأ في تحديث السائق',
             error: error.message
         });
     }
@@ -456,18 +436,18 @@ export const login = async (req: Request, res: Response): Promise<void> => {
         } else if (role === 'driver') {
             user = await Driver.findOne({ email });
         } else {
-            res.status(400).json({ message: 'Invalid role specified' });
+            res.status(400).json({ message: 'الدور المحدد غير صالح' });
             return;
         }
 
         if (!user) {
-            res.status(404).json({ message: 'User not found' });
+            res.status(404).json({ message: 'المستخدم غير موجود' });
             return;
         }
 
         const isPasswordValid = await bcrypt.compare(password, user.password);
         if (!isPasswordValid) {
-            res.status(401).json({ message: 'Invalid credentials' });
+            res.status(401).json({ message: 'بيانات الاعتماد غير صالحة' });
             return;
         }
 
@@ -479,7 +459,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
 
         if (role === 'router') {
             res.json({
-                message: 'Login successful',
+                message: 'تسجيل الدخول ناجح',
                 token,
                 user: {
                     id: user._id,
@@ -492,7 +472,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
         } else {
             const driver = user as IDriver;
             res.json({
-                message: 'Login successful',
+                message: 'تسجيل الدخول ناجح',
                 token,
                 user: {
                     id: driver._id,
@@ -508,12 +488,11 @@ export const login = async (req: Request, res: Response): Promise<void> => {
         }
     } catch (error: any) {
         res.status(500).json({
-            message: 'Error during login',
+            message: 'خطأ أثناء تسجيل الدخول',
             error: error.message
         });
     }
 };
-
 
 export const changePassword = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
@@ -534,45 +513,44 @@ export const changePassword = async (req: AuthenticatedRequest, res: Response): 
         }
 
         if (!user) {
-            res.status(404).json({ message: 'User not found' });
+            res.status(404).json({ message: 'المستخدم غير موجود' });
             return;
         }
 
         const isPasswordValid = await bcrypt.compare(currentPassword, user.password);
         if (!isPasswordValid) {
-            res.status(401).json({ message: 'Current password is incorrect' });
+            res.status(401).json({ message: 'كلمة المرور الحالية غير صحيحة' });
             return;
         }
 
         user.password = await bcrypt.hash(newPassword, 12);
         await user.save();
 
-        res.json({ message: 'Password updated successfully' });
+        res.json({ message: 'تم تحديث كلمة المرور بنجاح' });
     } catch (error: any) {
         res.status(500).json({
-            message: 'Error changing password',
+            message: 'خطأ في تغيير كلمة المرور',
             error: error.message
         });
     }
 };
 
-
 export const getUserById = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
         const { id, role } = req.user!;
         if (role !== 'router') {
-            res.status(403).json({ message: 'Unauthorized: Only routers can access their profile' });
+            res.status(403).json({ message: 'غير مصرح: يمكن للراوتر فقط الوصول إلى ملفهم الشخصي' });
             return;
         }
 
         const user = await User.findById(id).select('-password');
         if (!user) {
-            res.status(404).json({ message: 'User not found' });
+            res.status(404).json({ message: 'المستخدم غير موجود' });
             return;
         }
 
         res.json({
-            message: 'User retrieved successfully',
+            message: 'تم استرجاع المستخدم بنجاح',
             user: {
                 id: user._id,
                 fullName: user.fullName,
@@ -583,7 +561,7 @@ export const getUserById = async (req: AuthenticatedRequest, res: Response): Pro
         });
     } catch (error: any) {
         res.status(500).json({
-            message: 'Error retrieving user',
+            message: 'خطأ في استرجاع المستخدم',
             error: error.message
         });
     }
@@ -593,60 +571,57 @@ export const getDriverById = async (req: AuthenticatedRequest, res: Response): P
     try {
         const { id, role } = req.user!;
         if (role !== 'driver') {
-            res.status(403).json({ message: 'Unauthorized: Only drivers can access their profile' });
+            res.status(403).json({ message: 'غير مصرح: يمكن للسائقين فقط الوصول إلى ملفهم الشخصي' });
             return;
         }
 
-        // Populate vehicleType if you want the full vehicle details
         const driver = await Driver.findById(id).populate('vehicleType').select('-password');
 
         if (!driver) {
-            res.status(404).json({ message: 'Driver not found' });
+            res.status(404).json({ message: 'السائق غير موجود' });
             return;
         }
 
         res.json({
-            message: 'Driver retrieved successfully',
+            message: 'تم استرجاع السائق بنجاح',
             driver: {
                 id: driver._id,
                 fullName: driver.fullName,
                 email: driver.email,
                 phoneNumber: driver.phoneNumber,
                 vehicleNumber: driver.vehicleNumber,
-                vehicleType: driver.vehicleType, // This will be populated if you used populate()
-                vehicleTypeId: driver.vehicleType, // This will be just the ID if not populated
+                vehicleType: driver.vehicleType,
+                vehicleTypeId: driver.vehicleType,
                 photo: driver.photo,
                 role: 'driver'
             }
         });
     } catch (error: any) {
         res.status(500).json({
-            message: 'Error retrieving driver',
+            message: 'خطأ في استرجاع السائق',
             error: error.message
         });
     }
 };
-
-
 
 export const getUserGeneralById = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
         const { id, role } = req.params;
 
         if (!role) {
-            res.status(400).json({ message: 'Role is required' });
+            res.status(400).json({ message: 'الدور مطلوب' });
             return;
         }
 
         if (role === 'router') {
             const user = await User.findById(id).select('-password');
             if (!user) {
-                res.status(404).json({ message: 'User not found' });
+                res.status(404).json({ message: 'المستخدم غير موجود' });
                 return;
             }
 
             res.json({
-                message: 'User retrieved successfully',
+                message: 'تم استرجاع المستخدم بنجاح',
                 user: {
                     id: user._id,
                     fullName: user.fullName,
@@ -658,12 +633,12 @@ export const getUserGeneralById = async (req: AuthenticatedRequest, res: Respons
         } else if (role === 'driver') {
             const driver = await Driver.findById(id).populate('vehicleType').select('-password');
             if (!driver) {
-                res.status(404).json({ message: 'Driver not found' });
+                res.status(404).json({ message: 'السائق غير موجود' });
                 return;
             }
 
             res.json({
-                message: 'Driver retrieved successfully',
+                message: 'تم استرجاع السائق بنجاح',
                 user: {
                     id: driver._id,
                     fullName: driver.fullName,
@@ -677,11 +652,11 @@ export const getUserGeneralById = async (req: AuthenticatedRequest, res: Respons
                 }
             });
         } else {
-            res.status(400).json({ message: 'Invalid role specified' });
+            res.status(400).json({ message: 'الدور المحدد غير صالح' });
         }
     } catch (error: any) {
         res.status(500).json({
-            message: 'Error retrieving user',
+            message: 'خطأ في استرجاع المستخدم',
             error: error.message
         });
     }
