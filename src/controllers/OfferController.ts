@@ -80,7 +80,7 @@ export const createOffer = async (req: AuthenticatedRequest, res: Response): Pro
       order_id: order_id,
       type: 'new_offer',
       title: 'تم استلام عرض جديد',
-      message: `لقد تلقيت عرضًا جديدًا بقيمة ${price} دولار لطلبك`,
+      message: `لقد تلقيت عرضًا جديدًا بقيمة ${price} ليرا لطلبك`,
       is_read: false,
     });
 
@@ -114,7 +114,7 @@ export const createOffer = async (req: AuthenticatedRequest, res: Response): Pro
 
       req.io.to(`user-${order.customer_id}`).emit('new-notification', {
         title: 'تم استلام عرض جديد',
-        message: `لقد تلقيت عرضًا جديدًا بقيمة ${price} دولار لطلبك`,
+        message: `لقد تلقيت عرضًا جديدًا بقيمة ${price} ليرا لطلبك`,
       });
 
       req.io.to(`driver-${id}`).emit('offer-created', {
