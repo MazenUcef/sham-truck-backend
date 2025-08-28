@@ -1,10 +1,10 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
 export interface INotification extends Document {
-  user_id: mongoose.Types.ObjectId;
-  driver_id: mongoose.Types.ObjectId;
-  order_id: mongoose.Types.ObjectId;
-  type: 'new_offer' | 'offer_accepted' | 'offer_rejected' | 'order_created' | 'order_updated' | 'order_completed' |'ring';
+  user_id?: mongoose.Types.ObjectId;
+  driver_id?: mongoose.Types.ObjectId;
+  order_id?: mongoose.Types.ObjectId;
+  type: 'new_offer' | 'offer_accepted' | 'offer_rejected' | 'order_created' | 'order_updated' | 'order_completed' | 'ring' | 'new_order_available';
   title: string;
   message: string;
   is_read: boolean;
@@ -32,7 +32,7 @@ const notificationSchema = new Schema<INotification>(
     },
     type: {
       type: String,
-      enum: ['new_offer', 'offer_accepted', 'offer_rejected', 'order_created', 'order_updated', 'order_completed','ring'],
+      enum: ['new_offer', 'offer_accepted', 'offer_rejected', 'order_created', 'order_updated', 'order_completed', 'ring', 'new_order_available'],
       required: true,
     },
     title: {

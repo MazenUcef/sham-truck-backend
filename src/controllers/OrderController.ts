@@ -41,6 +41,7 @@ export const validateOrderCreate = [
     body('notes').optional().trim(),
 ];
 
+
 export const createOrder = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
         const errors = validationResult(req);
@@ -66,11 +67,15 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response): Pro
             type,
         }: OrderCreateData = req.body;
 
+        console.log('Router ID:', id);
+        console.log('Order vehicle_type:', vehicle_type);
         const vehicleType = await Vehicle.findById(vehicle_type);
         if (!vehicleType) {
             res.status(400).json({ message: 'Invalid vehicle type ID' });
             return;
         }
+        console.log('Found vehicle:', vehicleType);
+        console.log('Vehicle category:', vehicleType.category);
 
         const order = await Order.create({
             customer_id: id,
@@ -84,9 +89,65 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response): Pro
             type,
             status: 'Pending',
         });
+        console.log('Created order:', order._id);
 
+        // Notify the router who created the order
+        await Notification.create({
+            user_id: id,
+            order_id: order._id,
+            type: 'order_created',
+            title: 'Order Created',
+            message: 'Your order has been created successfully',
+            is_read: false,
+        });
+        console.log('Router notification created for user_id:', id);
 
+        // Find drivers with vehicles in the same category
+        const drivers = await Driver.find()
+            .populate({
+                path: 'vehicleType',
+                match: { category: vehicleType.category },
+                select: '_id category type'
+            })
+            .select('_id fullName vehicleNumber')
+            .lean();
+        // Filter out drivers where vehicleType is null (i.e., no matching category)
+        const matchingDrivers = drivers.filter(driver => driver.vehicleType !== null);
+        console.log('Matching drivers (by vehicle category):', matchingDrivers);
+
+        // Create notifications for each matching driver
+        const driverNotifications = matchingDrivers.map(driver => ({
+            driver_id: driver._id,
+            order_id: order._id,
+            type: 'new_order_available',
+            title: 'New Order Available',
+            message: `A new order matching your vehicle category is available: ${order.from_location} to ${order.to_location}`,
+            is_read: false,
+        }));
+        console.log('Driver notifications to create:', driverNotifications);
+
+        if (driverNotifications.length > 0) {
+            try {
+                await Notification.insertMany(driverNotifications);
+                console.log('Notifications created for drivers:', matchingDrivers.map(d => ({ id: d._id, fullName: d.fullName })));
+            } catch (error) {
+                console.error('Error creating driver notifications:', error);
+            }
+        } else {
+            console.log('No driver notifications created (no matching drivers)');
+        }
+
+        // Populate the order for response and socket emissions
+        const populatedOrder = await Order.findById(order._id)
+            .populate('vehicle_type')
+            .populate({
+                path: 'customer_id',
+                select: '-password'
+            });
+
+        // Emit Socket.IO events
         if (req.io) {
+            console.log('Socket.IO instance available:', req.io);
             req.io.emit('new-order-available', {
                 order: {
                     id: order._id,
@@ -100,47 +161,27 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response): Pro
                     type: order.type,
                     status: order.status,
                 }
-            })
-        }
-
-
-        const populatedOrder = await Order.findById(order._id)
-            .populate('vehicle_type')
-            .populate({
-                path: 'customer_id',
-                select: '-password'
             });
 
-
-        
-        await Notification.create({
-            user_id: id,
-            order_id: order._id,
-            type: 'order_created',
-            title: 'Order Created',
-            message: 'Your order has been created successfully',
-            is_read: false,
-        });
-
-        
-        if (req.io) {
-           
-            req.io.emit('new-order', {
-                message: 'New order available',
-                order: populatedOrder
-            });
-
-          
             req.io.to(`user-${id}`).emit('order-created', {
                 message: 'Your order has been created successfully',
                 order: populatedOrder
             });
 
-           
             req.io.to(`user-${id}`).emit('new-notification', {
                 title: 'Order Created',
                 message: 'Your order has been created successfully'
             });
+
+            matchingDrivers.forEach(driver => {
+                console.log(`Emitting new-notification to driver-${driver._id}`);
+                req.io!.to(`driver-${driver._id}`).emit('new-notification', {
+                    title: 'New Order Available',
+                    message: `A new order matching your vehicle category is available: ${order.from_location} to ${order.to_location}`
+                });
+            });
+        } else {
+            console.warn('Socket.IO instance not available on request object');
         }
 
         res.status(201).json({
@@ -162,13 +203,13 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response): Pro
             },
         });
     } catch (error: any) {
+        console.error('Create order error:', error);
         res.status(500).json({
             message: 'Error creating order',
             error: error.message,
         });
     }
 };
-
 export const getRouterOrders = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
         const { id, role } = req.user!;
