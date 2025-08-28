@@ -192,137 +192,151 @@ export const getOrderOffers = async (req: AuthenticatedRequest, res: Response): 
 };
 
 export const acceptOffer = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-    try {
-        const { id, role } = req.user!;
-        if (role !== 'router') {
-            res.status(403).json({ message: 'غير مصرح: يمكن للراوتر فقط قبول العروض' });
-            return;
-        }
-
-        const offerId = req.params.id;
-        if (!mongoose.Types.ObjectId.isValid(offerId)) {
-            res.status(400).json({ message: 'معرف العرض غير صالح' });
-            return;
-        }
-
-        const offer = await Offer.findById(offerId);
-        if (!offer) {
-            res.status(404).json({ message: 'العرض غير موجود' });
-            return;
-        }
-
-        const order = await Order.findOne({ _id: offer.order_id, customer_id: id });
-        if (!order) {
-            res.status(404).json({ message: 'الطلب غير موجود أو ليس لديك الوصول إلى هذا الطلب' });
-            return;
-        }
-
-        if (offer.status !== 'Pending') {
-            res.status(400).json({ message: 'لا يمكن قبول العرض لأنه ليس قيد الانتظار' });
-            return;
-        }
-
-        offer.status = 'Accepted';
-        await offer.save();
-
-        await Offer.updateMany(
-            { order_id: offer.order_id, _id: { $ne: offer._id } },
-            { $set: { status: 'Rejected' } }
-        );
-
-        await Order.findByIdAndUpdate(offer.order_id, { status: 'Active' });
-
-        const populatedOffer = await Offer.findById(offer._id)
-            .populate('driver_id')
-            .populate('order_id');
-
-        await Notification.create({
-            driver_id: offer.driver_id, 
-            order_id: offer.order_id,
-            type: 'offer_accepted',
-            title: 'تم قبول العرض',
-            message: 'تم قبول عرضك!',
-            is_read: false,
-        });
-
-        await Notification.create({
-            user_id: id,
-            order_id: offer.order_id,
-            type: 'offer_accepted',
-            title: 'تم قبول العرض',
-            message: 'لقد قبلت عرضًا',
-            is_read: false,
-        });
-
-        const rejectedOffers = await Offer.find({
-            order_id: offer.order_id,
-            _id: { $ne: offer._id }
-        });
-
-        for (const rejectedOffer of rejectedOffers) {
-            await Notification.create({
-                driver_id: rejectedOffer.driver_id,
-                order_id: offer.order_id,
-                type: 'offer_rejected',
-                title: 'لم يتم اختيار العرض',
-                message: 'لم يتم اختيار عرضك لهذا الطلب',
-                is_read: false,
-            });
-        }
-
-        if (req.io) {
-            req.io.to(`driver-${offer.driver_id}`).emit('offer-accepted', {
-                message: 'تم قبول عرضك',
-                offer: populatedOffer
-            });
-
-            req.io.to(`user-${id}`).emit('offer-accepted-confirmation', {
-                message: 'تم قبول العرض بنجاح',
-                offer: populatedOffer
-            });
-
-            rejectedOffers.forEach(rejectedOffer => {
-                req?.io?.to(`driver-${rejectedOffer.driver_id}`).emit('offer-rejected', {
-                    message: 'لم يتم اختيار عرضك',
-                    order_id: rejectedOffer.order_id
-                });
-            });
-
-            req.io.to(`driver-${offer.driver_id}`).emit('new-notification', {
-                title: 'تم قبول العرض',
-                message: 'تم قبول عرضك!'
-            });
-
-            req.io.to(`user-${id}`).emit('new-notification', {
-                title: 'تم قبول العرض',
-                message: 'لقد قبلت عرضًا'
-            });
-
-            rejectedOffers.forEach(rejectedOffer => {
-                req?.io?.to(`driver-${rejectedOffer.driver_id}`).emit('new-notification', {
-                    title: 'لم يتم اختيار العرض',
-                    message: 'لم يتم اختيار عرضك لهذا الطلب'
-                });
-            });
-        }
-
-        res.json({
-            message: 'تم قبول العرض بنجاح',
-            offer: {
-                id: offer._id,
-                order_id: offer.order_id,
-                driver_id: offer.driver_id,
-                price: offer.price,
-                notes: offer.notes,
-                status: offer.status,
-                createdAt: offer.createdAt,
-                updatedAt: offer.updatedAt,
-            },
-        });
-    } catch (error: any) {
-        res.status(500).json({
-            message: 'خطأ في قبول العرض',
-            error: error.message,
-        });
+  try {
+    const { id, role } = req.user!;
+    if (role !== 'router') {
+      res.status(403).json({ message: 'غير مصرح: يمكن للراوتر فقط قبول العروض' });
+      return;
     }
+
+    const offerId = req.params.id;
+    if (!mongoose.Types.ObjectId.isValid(offerId)) {
+      res.status(400).json({ message: 'معرف العرض غير صالح' });
+      return;
+    }
+
+    const offer = await Offer.findById(offerId);
+    if (!offer) {
+      res.status(404).json({ message: 'العرض غير موجود' });
+      return;
+    }
+
+    const order = await Order.findOne({ _id: offer.order_id, customer_id: id });
+    if (!order) {
+      res.status(404).json({ message: 'الطلب غير موجود أو ليس لديك الوصول إلى هذا الطلب' });
+      return;
+    }
+
+    if (offer.status !== 'Pending') {
+      res.status(400).json({ message: 'لا يمكن قبول العرض لأنه ليس قيد الانتظار' });
+      return;
+    }
+
+    offer.status = 'Accepted';
+    await offer.save();
+
+    await Offer.updateMany(
+      { order_id: offer.order_id, _id: { $ne: offer._id } },
+      { $set: { status: 'Rejected' } }
+    );
+
+    await Order.findByIdAndUpdate(offer.order_id, { status: 'Active' });
+
+    const populatedOffer = await Offer.findById(offer._id)
+      .populate('driver_id')
+      .populate('order_id');
+
+    const updatedOrder = await Order.findById(offer.order_id)
+      .populate('vehicle_type')
+      .populate({ path: 'customer_id', select: '-password' });
+
+    await Notification.create({
+      driver_id: offer.driver_id,
+      order_id: offer.order_id,
+      type: 'offer_accepted',
+      title: 'تم قبول العرض',
+      message: 'تم قبول عرضك!',
+      is_read: false,
+    });
+
+    await Notification.create({
+      user_id: id,
+      order_id: offer.order_id,
+      type: 'offer_accepted',
+      title: 'تم قبول العرض',
+      message: 'لقد قبلت عرضًا',
+      is_read: false,
+    });
+
+    const rejectedOffers = await Offer.find({
+      order_id: offer.order_id,
+      _id: { $ne: offer._id },
+    });
+
+    for (const rejectedOffer of rejectedOffers) {
+      await Notification.create({
+        driver_id: rejectedOffer.driver_id,
+        order_id: offer.order_id,
+        type: 'offer_rejected',
+        title: 'لم يتم اختيار العرض',
+        message: 'لم يتم اختيار عرضك لهذا الطلب',
+        is_read: false,
+      });
+    }
+
+    if (req.io) {
+      req.io.to(`driver-${offer.driver_id}`).emit('offer-accepted', {
+        message: 'تم قبول عرضك',
+        offer: populatedOffer,
+      });
+
+      req.io.to(`user-${id}`).emit('offer-accepted-confirmation', {
+        message: 'تم قبول العرض بنجاح',
+        offer: populatedOffer,
+      });
+
+      // Emit order-updated event
+      req.io.to(`driver-${offer.driver_id}`).emit('order-updated', {
+        message: 'Order status updated to Active',
+        order: updatedOrder,
+      });
+      req.io.to(`user-${id}`).emit('order-updated', {
+        message: 'Order status updated to Active',
+        order: updatedOrder,
+      });
+
+      rejectedOffers.forEach((rejectedOffer) => {
+        req.io?.to(`driver-${rejectedOffer.driver_id}`).emit('offer-rejected', {
+          message: 'لم يتم اختيار عرضك',
+          order_id: rejectedOffer.order_id,
+        });
+      });
+
+      req.io.to(`driver-${offer.driver_id}`).emit('new-notification', {
+        title: 'تم قبول العرض',
+        message: 'تم قبول عرضك!',
+      });
+
+      req.io.to(`user-${id}`).emit('new-notification', {
+        title: 'تم قبول العرض',
+        message: 'لقد قبلت عرضًا',
+      });
+
+      rejectedOffers.forEach((rejectedOffer) => {
+        req.io?.to(`driver-${rejectedOffer.driver_id}`).emit('new-notification', {
+          title: 'لم يتم اختيار العرض',
+          message: 'لم يتم اختيار عرضك لهذا الطلب',
+        });
+      });
+    }
+
+    res.json({
+      message: 'تم قبول العرض بنجاح',
+      offer: {
+        id: offer._id,
+        order_id: offer.order_id,
+        driver_id: offer.driver_id,
+        price: offer.price,
+        notes: offer.notes,
+        status: offer.status,
+        createdAt: offer.createdAt,
+        updatedAt: offer.updatedAt,
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      message: 'خطأ في قبول العرض',
+      error: error.message,
+    });
+  }
 };
