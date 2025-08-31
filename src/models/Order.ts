@@ -1,4 +1,5 @@
 import mongoose, { Document, Schema } from 'mongoose';
+import { Types } from 'mongoose';
 
 export interface IOrder extends Document {
   _id: mongoose.Types.ObjectId;
@@ -14,6 +15,7 @@ export interface IOrder extends Document {
   status: 'Active' | 'Ended' | 'Pending' | 'Offered';
   createdAt: Date;
   updatedAt: Date;
+  offered_drivers: Types.ObjectId[];
 }
 
 const orderSchema = new Schema<IOrder>(
@@ -60,6 +62,11 @@ const orderSchema = new Schema<IOrder>(
       enum: ['Active', 'Ended', 'Pending','Offered'],
       default: 'Pending',
     },
+    offered_drivers: [{
+      type: Schema.Types.ObjectId,
+      ref: 'Driver',
+      default: [],
+    }],
   },
   {
     timestamps: true,

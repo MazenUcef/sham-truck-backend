@@ -64,9 +64,15 @@ export const createOffer = async (req: AuthenticatedRequest, res: Response): Pro
       notes,
       status: 'Offered',
     });
-    await Order.findByIdAndUpdate(order_id, { status: 'Offered' });
+
+    await Order.findByIdAndUpdate(
+      order_id,
+      { $addToSet: { offered_drivers: id } },
+      { new: true }
+    );
+
     const populatedOffer = await Offer.findById(offer._id)
-      .populate<{ driver_id: IPopulatedDriver }>('driver_id', 'fullName') // Type driver_id as IPopulatedDriver
+      .populate<{ driver_id: IPopulatedDriver }>('driver_id', 'fullName')
       .populate('order_id');
 
     if (!populatedOffer) {
@@ -74,7 +80,6 @@ export const createOffer = async (req: AuthenticatedRequest, res: Response): Pro
       return;
     }
 
-    // Create notification for router
     await Notification.create({
       user_id: order.customer_id,
       order_id: order_id,

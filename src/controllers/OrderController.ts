@@ -101,13 +101,11 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response): Pro
         });
         console.log('Router notification created for user_id:', id);
 
-        // Get all drivers and populate their vehicleType with proper typing
         const drivers = await Driver.find()
             .populate<{ vehicleType: VehicleType }>('vehicleType')
             .select('_id fullName vehicleNumber')
             .lean();
 
-        // Filter drivers by vehicle category with proper type casting
         const matchingDrivers = drivers.filter(driver => 
             driver.vehicleType && 
             (driver.vehicleType as any).category === vehicleType.category
@@ -314,19 +312,23 @@ export const getDriverOrders = async (req: AuthenticatedRequest, res: Response):
             return;
         }
 
-        // Use the IPopulatedDriver interface for proper typing
+
         const driver = await Driver.findById(id).populate<{ vehicleType: VehicleType }>('vehicleType');
         if (!driver) {
             res.status(404).json({ message: 'السائق غير موجود' });
             return;
         }
 
-        // Cast to any to access the populated vehicleType properties
+
         const populatedDriver = driver as any;
         const driverVehicleCategory = populatedDriver.vehicleType.category;
         
-        // Find all pending orders and populate vehicle_type with proper typing
-        const orders = await Order.find({ status: 'Pending' })
+
+
+        const orders = await Order.find({ 
+            status: 'Pending',
+            offered_drivers: { $ne: id }
+        })
             .populate<{ vehicle_type: VehicleType }>('vehicle_type')
             .populate({
                 path: 'customer_id',
@@ -334,7 +336,7 @@ export const getDriverOrders = async (req: AuthenticatedRequest, res: Response):
             })
             .lean();
 
-        // Filter orders to only include those with matching vehicle category
+
         const filteredOrders = orders.filter((order) => 
             order.vehicle_type && 
             (order.vehicle_type as any).category === driverVehicleCategory
