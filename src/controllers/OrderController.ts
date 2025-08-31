@@ -6,6 +6,7 @@ import Vehicle from '../models/Vehicle';
 import Driver from '../models/Driver';
 import { Server as SocketIOServer } from 'socket.io';
 import Notification from '../models/Notification';
+import { VehicleType } from '../types';
 
 interface AuthenticatedRequest extends Request {
     user?: {
@@ -100,15 +101,17 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response): Pro
         });
         console.log('Router notification created for user_id:', id);
 
+        // Get all drivers and populate their vehicleType with proper typing
         const drivers = await Driver.find()
-            .populate({
-                path: 'vehicleType',
-                match: { category: vehicleType.category },
-                select: '_id category type'
-            })
+            .populate<{ vehicleType: VehicleType }>('vehicleType')
             .select('_id fullName vehicleNumber')
             .lean();
-        const matchingDrivers = drivers.filter(driver => driver.vehicleType !== null);
+
+        // Filter drivers by vehicle category with proper type casting
+        const matchingDrivers = drivers.filter(driver => 
+            driver.vehicleType && 
+            (driver.vehicleType as any).category === vehicleType.category
+        );
         console.log('Matching drivers (by vehicle category):', matchingDrivers);
 
         const driverNotifications = matchingDrivers.map(driver => ({
@@ -141,19 +144,29 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response): Pro
 
         if (req.io) {
             console.log('Socket.IO instance available:', req.io);
-            req.io.emit('new-order-available', {
-                order: {
-                    id: order._id,
-                    from_location: order.from_location,
-                    to_location: order.to_location,
-                    vehicle_type: order.vehicle_type,
-                    weight_or_volume: order.weight_or_volume,
-                    date_time_transport: order.date_time_transport,
-                    loading_time: order.loading_time,
-                    notes: order.notes,
-                    type: order.type,
-                    status: order.status,
-                }
+            
+            // Emit to all matching drivers with proper null check
+            matchingDrivers.forEach(driver => {
+                req.io!.to(`driver-${driver._id}`).emit('new-order-available', {
+                    order: {
+                        id: order._id,
+                        from_location: order.from_location,
+                        to_location: order.to_location,
+                        vehicle_type: order.vehicle_type,
+                        weight_or_volume: order.weight_or_volume,
+                        date_time_transport: order.date_time_transport,
+                        loading_time: order.loading_time,
+                        notes: order.notes,
+                        type: order.type,
+                        status: order.status,
+                    }
+                });
+
+                console.log(`Emitting new-notification to driver-${driver._id}`);
+                req.io!.to(`driver-${driver._id}`).emit('new-notification', {
+                    title: 'طلب جديد متاح',
+                    message: `طلب جديد يتطابق مع فئة مركبتك متاح: من ${order.from_location} إلى ${order.to_location}`
+                });
             });
 
             req.io.to(`user-${id}`).emit('order-created', {
@@ -164,14 +177,6 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response): Pro
             req.io.to(`user-${id}`).emit('new-notification', {
                 title: 'تم إنشاء الطلب',
                 message: 'تم إنشاء طلبك بنجاح'
-            });
-
-            matchingDrivers.forEach(driver => {
-                console.log(`Emitting new-notification to driver-${driver._id}`);
-                req.io!.to(`driver-${driver._id}`).emit('new-notification', {
-                    title: 'طلب جديد متاح',
-                    message: `طلب جديد يتطابق مع فئة مركبتك متاح: من ${order.from_location} إلى ${order.to_location}`
-                });
             });
         } else {
             console.warn('Socket.IO instance not available on request object');
@@ -309,29 +314,31 @@ export const getDriverOrders = async (req: AuthenticatedRequest, res: Response):
             return;
         }
 
-        const driver = await Driver.findById(id).populate<{ vehicleType: any }>('vehicleType');
+        // Use the IPopulatedDriver interface for proper typing
+        const driver = await Driver.findById(id).populate<{ vehicleType: VehicleType }>('vehicleType');
         if (!driver) {
             res.status(404).json({ message: 'السائق غير موجود' });
             return;
         }
 
+        // Cast to any to access the populated vehicleType properties
         const populatedDriver = driver as any;
         const driverVehicleCategory = populatedDriver.vehicleType.category;
-
-        const orders = await Order.find({
-            status: 'Pending',
-        })
-            .populate({
-                path: 'vehicle_type',
-                match: { category: driverVehicleCategory },
-            })
+        
+        // Find all pending orders and populate vehicle_type with proper typing
+        const orders = await Order.find({ status: 'Pending' })
+            .populate<{ vehicle_type: VehicleType }>('vehicle_type')
             .populate({
                 path: 'customer_id',
                 select: '-password'
             })
             .lean();
 
-        const filteredOrders = orders.filter((order) => order.vehicle_type !== null);
+        // Filter orders to only include those with matching vehicle category
+        const filteredOrders = orders.filter((order) => 
+            order.vehicle_type && 
+            (order.vehicle_type as any).category === driverVehicleCategory
+        );
 
         if (req.io && req.headers['socket-id']) {
             req.io.to(req.headers['socket-id']).emit('subscribe-driver-orders', id);

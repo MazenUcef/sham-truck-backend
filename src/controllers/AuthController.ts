@@ -7,6 +7,8 @@ import { generateToken } from '../utils/token';
 import { uploadToCloudinary, deleteFromCloudinary } from '../utils/cloudinary';
 import User from '../models/Router';
 import mongoose from 'mongoose';
+import { VehicleType } from '../types';
+import { Server as SocketIOServer } from 'socket.io';
 
 interface UserSignupData {
     fullName: string;
@@ -48,6 +50,7 @@ interface AuthenticatedRequest extends Request {
         role: string;
         fullName: string;
     };
+    io?: SocketIOServer;
 }
 
 export const validateDriverSignup = [
@@ -288,6 +291,9 @@ export const updateUser = async (req: AuthenticatedRequest, res: Response): Prom
 
 export const updateDriver = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     let photoPublicId = '';
+    let vehicleTypeChanged = false;
+    let oldVehicleCategory = '';
+    
     try {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
@@ -303,11 +309,19 @@ export const updateDriver = async (req: AuthenticatedRequest, res: Response): Pr
 
         const { fullName, email, phoneNumber, vehicleNumber, vehicleTypeId }: DriverUpdateData = req.body;
 
+        // Use proper typing for populated vehicleType
+        const currentDriver = await Driver.findById(id).populate<{ vehicleType: VehicleType }>('vehicleType');
+        if (!currentDriver) {
+            res.status(404).json({ message: 'السائق غير موجود' });
+            return;
+        }
+
         const updateData: any = {};
         if (fullName) updateData.fullName = fullName;
         if (email) updateData.email = email;
         if (phoneNumber) updateData.phoneNumber = phoneNumber;
         if (vehicleNumber) updateData.vehicleNumber = vehicleNumber;
+        
         if (vehicleTypeId) {
             if (!mongoose.Types.ObjectId.isValid(vehicleTypeId)) {
                 res.status(400).json({ message: 'معرف نوع المركبة غير صالح' });
@@ -320,7 +334,12 @@ export const updateDriver = async (req: AuthenticatedRequest, res: Response): Pr
                 return;
             }
 
-            updateData.vehicleType = vehicleTypeId;
+            // Cast to any to access the category property
+            if ((currentDriver as any).vehicleType._id.toString() !== vehicleTypeId) {
+                vehicleTypeChanged = true;
+                oldVehicleCategory = (currentDriver as any).vehicleType.category;
+                updateData.vehicleType = vehicleTypeId;
+            }
         }
 
         if (email || phoneNumber || vehicleNumber) {
@@ -378,7 +397,7 @@ export const updateDriver = async (req: AuthenticatedRequest, res: Response): Pr
             }
         }
 
-        const updatedDriver = await Driver.findByIdAndUpdate(id, updateData, { new: true });
+        const updatedDriver = await Driver.findByIdAndUpdate(id, updateData, { new: true }).populate<{ vehicleType: VehicleType }>('vehicleType');
         if (!updatedDriver) {
             if (photoPublicId) {
                 try {
@@ -389,6 +408,15 @@ export const updateDriver = async (req: AuthenticatedRequest, res: Response): Pr
             }
             res.status(404).json({ message: 'السائق غير موجود' });
             return;
+        }
+
+        // Add proper null check for req.io
+        if (req.io && vehicleTypeChanged) {
+            req.io.to(`driver-${id}`).emit('vehicle-type-updated', {
+                message: 'تم تحديث نوع المركبة، سيتم عرض الطلبات المناسبة فقط'
+            });
+            
+            req.io.to(`driver-${id}`).emit('refresh-orders');
         }
 
         res.json({
