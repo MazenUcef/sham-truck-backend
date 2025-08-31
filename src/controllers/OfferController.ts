@@ -269,7 +269,7 @@ export const acceptOffer = async (req: AuthenticatedRequest, res: Response): Pro
       return;
     }
 
-    if (offer.status !== 'Pending') {
+    if (offer.status !== 'Offered') {
       res.status(400).json({ message: 'لا يمكن قبول العرض لأنه ليس قيد الانتظار' });
       return;
     }
