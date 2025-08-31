@@ -8,7 +8,7 @@ export interface IOffer extends Document {
   driver_id: Types.ObjectId | IPopulatedDriver;
   price: number;
   notes?: string;
-  status: 'Accepted' | 'Rejected' | 'Pending' | 'Expired';
+  status: 'Accepted' | 'Rejected' | 'Pending' | 'Expired' | 'Offered';
   createdAt: Date;
   updatedAt: Date;
 }
@@ -34,7 +34,7 @@ const offerSchema = new Schema<IOffer>(
     },
     status: {
       type: String,
-      enum: ['Accepted', 'Rejected', 'Pending', 'Expired'],
+      enum: ['Accepted', 'Rejected', 'Pending', 'Expired', 'Offered'],
       default: 'Pending',
     },
   },

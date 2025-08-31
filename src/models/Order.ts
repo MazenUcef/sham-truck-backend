@@ -11,7 +11,7 @@ export interface IOrder extends Document {
   loading_time: string;
   notes?: string;
   type?: string;
-  status: 'Active' | 'Ended' | 'Pending';
+  status: 'Active' | 'Ended' | 'Pending' | 'Offered';
   createdAt: Date;
   updatedAt: Date;
 }
@@ -57,7 +57,7 @@ const orderSchema = new Schema<IOrder>(
     },
     status: {
       type: String,
-      enum: ['Active', 'Ended', 'Pending'],
+      enum: ['Active', 'Ended', 'Pending','Offered'],
       default: 'Pending',
     },
   },

@@ -8,24 +8,24 @@ import Notification from '../models/Notification';
 import { IPopulatedDriver } from '../models/Driver';
 
 interface AuthenticatedRequest extends Request {
-    user?: {
-        id: string;
-        role: string;
-        fullName: string;
-    };
-    io?: SocketIOServer;
+  user?: {
+    id: string;
+    role: string;
+    fullName: string;
+  };
+  io?: SocketIOServer;
 }
 
 interface OfferCreateData {
-    order_id: string;
-    price: number;
-    notes?: string;
+  order_id: string;
+  price: number;
+  notes?: string;
 }
 
 export const validateOfferCreate = [
-    body('order_id').isMongoId().withMessage('معرف الطلب غير صالح'),
-    body('price').isNumeric().withMessage('يجب أن يكون السعر رقمًا').isFloat({ min: 0 }).withMessage('يجب أن يكون السعر موجبًا'),
-    body('notes').optional().trim(),
+  body('order_id').isMongoId().withMessage('معرف الطلب غير صالح'),
+  body('price').isNumeric().withMessage('يجب أن يكون السعر رقمًا').isFloat({ min: 0 }).withMessage('يجب أن يكون السعر موجبًا'),
+  body('notes').optional().trim(),
 ];
 
 
@@ -62,9 +62,9 @@ export const createOffer = async (req: AuthenticatedRequest, res: Response): Pro
       driver_id: id,
       price,
       notes,
-      status: 'Pending',
+      status: 'Offered',
     });
-
+    await Order.findByIdAndUpdate(order_id, { status: 'Offered' });
     const populatedOffer = await Offer.findById(offer._id)
       .populate<{ driver_id: IPopulatedDriver }>('driver_id', 'fullName') // Type driver_id as IPopulatedDriver
       .populate('order_id');
@@ -163,79 +163,79 @@ export const createOffer = async (req: AuthenticatedRequest, res: Response): Pro
 };
 
 export const getDriverOffers = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-    try {
-        const { id, role } = req.user!;
-        if (role !== 'driver') {
-            res.status(403).json({ message: 'غير مصرح: يمكن للسائقين فقط الوصول إلى عروضهم' });
-            return;
-        }
-
-        const offers = await Offer.find({ driver_id: id }).populate('order_id');
-
-        res.json({
-            message: 'تم استرجاع العروض بنجاح',
-            offers: offers.map((offer) => ({
-                id: offer._id,
-                order_id: offer.order_id,
-                price: offer.price,
-                notes: offer.notes,
-                status: offer.status,
-                createdAt: offer.createdAt,
-                updatedAt: offer.updatedAt,
-            })),
-        });
-    } catch (error: any) {
-        res.status(500).json({
-            message: 'خطأ في استرجاع العروض',
-            error: error.message,
-        });
+  try {
+    const { id, role } = req.user!;
+    if (role !== 'driver') {
+      res.status(403).json({ message: 'غير مصرح: يمكن للسائقين فقط الوصول إلى عروضهم' });
+      return;
     }
+
+    const offers = await Offer.find({ driver_id: id }).populate('order_id');
+
+    res.json({
+      message: 'تم استرجاع العروض بنجاح',
+      offers: offers.map((offer) => ({
+        id: offer._id,
+        order_id: offer.order_id,
+        price: offer.price,
+        notes: offer.notes,
+        status: offer.status,
+        createdAt: offer.createdAt,
+        updatedAt: offer.updatedAt,
+      })),
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      message: 'خطأ في استرجاع العروض',
+      error: error.message,
+    });
+  }
 };
 
 export const getOrderOffers = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-    try {
-        const { id, role } = req.user!;
-        if (role !== 'router') {
-            res.status(403).json({ message: 'غير مصرح: يمكن للراوتر فقط الوصول إلى عروض طلباتهم' });
-            return;
-        }
-
-        const orderId = req.params.id;
-        if (!mongoose.Types.ObjectId.isValid(orderId)) {
-            res.status(400).json({ message: 'معرف الطلب غير صالح' });
-            return;
-        }
-
-        const order = await Order.findOne({ _id: orderId, customer_id: id });
-        if (!order) {
-            res.status(404).json({ message: 'الطلب غير موجود أو ليس لديك الوصول إلى هذا الطلب' });
-            return;
-        }
-
-        const offers = await Offer.find({ order_id: orderId }).populate('driver_id');
-
-        if (req.io && req.headers['socket-id']) {
-            req.io.to(req.headers['socket-id']).emit('subscribe-order-offers', orderId);
-        }
-
-        res.json({
-            message: 'تم استرجاع العروض بنجاح',
-            offers: offers.map((offer) => ({
-                id: offer._id,
-                driver_id: offer.driver_id,
-                price: offer.price,
-                notes: offer.notes,
-                status: offer.status,
-                createdAt: offer.createdAt,
-                updatedAt: offer.updatedAt,
-            })),
-        });
-    } catch (error: any) {
-        res.status(500).json({
-            message: 'خطأ في استرجاع العروض',
-            error: error.message,
-        });
+  try {
+    const { id, role } = req.user!;
+    if (role !== 'router') {
+      res.status(403).json({ message: 'غير مصرح: يمكن للراوتر فقط الوصول إلى عروض طلباتهم' });
+      return;
     }
+
+    const orderId = req.params.id;
+    if (!mongoose.Types.ObjectId.isValid(orderId)) {
+      res.status(400).json({ message: 'معرف الطلب غير صالح' });
+      return;
+    }
+
+    const order = await Order.findOne({ _id: orderId, customer_id: id });
+    if (!order) {
+      res.status(404).json({ message: 'الطلب غير موجود أو ليس لديك الوصول إلى هذا الطلب' });
+      return;
+    }
+
+    const offers = await Offer.find({ order_id: orderId }).populate('driver_id');
+
+    if (req.io && req.headers['socket-id']) {
+      req.io.to(req.headers['socket-id']).emit('subscribe-order-offers', orderId);
+    }
+
+    res.json({
+      message: 'تم استرجاع العروض بنجاح',
+      offers: offers.map((offer) => ({
+        id: offer._id,
+        driver_id: offer.driver_id,
+        price: offer.price,
+        notes: offer.notes,
+        status: offer.status,
+        createdAt: offer.createdAt,
+        updatedAt: offer.updatedAt,
+      })),
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      message: 'خطأ في استرجاع العروض',
+      error: error.message,
+    });
+  }
 };
 
 export const acceptOffer = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
