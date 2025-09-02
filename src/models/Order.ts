@@ -9,7 +9,6 @@ export interface IOrder extends Document {
   vehicle_type: mongoose.Types.ObjectId;
   weight_or_volume: string;
   date_time_transport: Date;
-  loading_time: string;
   notes?: string;
   type?: string;
   status: 'Active' | 'Ended' | 'Pending' | 'Offered';
@@ -44,10 +43,6 @@ const orderSchema = new Schema<IOrder>(
     },
     date_time_transport: {
       type: Date,
-      required: true,
-    },
-    loading_time: {
-      type: String,
       required: true,
     },
     type: {

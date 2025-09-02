@@ -23,7 +23,6 @@ interface OrderCreateData {
     vehicle_type: string;
     weight_or_volume: string;
     date_time_transport: Date;
-    loading_time: string;
     notes?: string;
     type: string;
 }
@@ -37,7 +36,6 @@ export const validateOrderCreate = [
         .isISO8601()
         .toDate()
         .withMessage('تاريخ ووقت النقل غير صالح'),
-    body('loading_time').trim().notEmpty().withMessage('وقت التحميل مطلوب'),
     body('type').trim().notEmpty().withMessage('نوع الطلب مطلوب'),
     body('notes').optional().trim(),
 ];
@@ -62,7 +60,6 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response): Pro
             vehicle_type,
             weight_or_volume,
             date_time_transport,
-            loading_time,
             notes,
             type,
         }: OrderCreateData = req.body;
@@ -84,7 +81,6 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response): Pro
             vehicle_type,
             weight_or_volume,
             date_time_transport,
-            loading_time,
             notes,
             type,
             status: 'Pending',
@@ -153,7 +149,6 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response): Pro
                         vehicle_type: order.vehicle_type,
                         weight_or_volume: order.weight_or_volume,
                         date_time_transport: order.date_time_transport,
-                        loading_time: order.loading_time,
                         notes: order.notes,
                         type: order.type,
                         status: order.status,
@@ -190,7 +185,6 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response): Pro
                 vehicle_type: populatedOrder!.vehicle_type,
                 weight_or_volume: populatedOrder!.weight_or_volume,
                 date_time_transport: populatedOrder!.date_time_transport,
-                loading_time: populatedOrder!.loading_time,
                 notes: populatedOrder!.notes,
                 type: populatedOrder!.type,
                 status: populatedOrder!.status,
@@ -236,7 +230,6 @@ export const getRouterOrders = async (req: AuthenticatedRequest, res: Response):
                 vehicle_type: order.vehicle_type,
                 weight_or_volume: order.weight_or_volume,
                 date_time_transport: order.date_time_transport,
-                loading_time: order.loading_time,
                 notes: order.notes,
                 type: order.type,
                 status: order.status,
@@ -288,7 +281,6 @@ export const getOrderById = async (req: AuthenticatedRequest, res: Response): Pr
                 vehicle_type: order.vehicle_type,
                 weight_or_volume: order.weight_or_volume,
                 date_time_transport: order.date_time_transport,
-                loading_time: order.loading_time,
                 notes: order.notes,
                 type: order.type,
                 status: order.status,
@@ -356,7 +348,6 @@ export const getDriverOrders = async (req: AuthenticatedRequest, res: Response):
                 vehicle_type: order.vehicle_type,
                 weight_or_volume: order.weight_or_volume,
                 date_time_transport: order.date_time_transport,
-                loading_time: order.loading_time,
                 notes: order.notes,
                 type: order.type,
                 status: order.status,
