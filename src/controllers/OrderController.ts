@@ -248,26 +248,35 @@ export const getRouterOrders = async (req: AuthenticatedRequest, res: Response):
 export const getOrderById = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
         const { id, role } = req.user!;
-        if (role !== 'router') {
-            res.status(403).json({ message: 'غير مصرح: يمكن للراوتر فقط الوصول إلى طلباتهم' });
-            return;
-        }
-
         const orderId = req.params.id;
+
         if (!mongoose.Types.ObjectId.isValid(orderId)) {
             res.status(400).json({ message: 'معرف الطلب غير صالح' });
             return;
         }
 
-        const order = await Order.findOne({ _id: orderId, customer_id: id })
-            .populate('vehicle_type')
-            .populate({
-                path: 'customer_id',
-                select: '-password'
-            });
+        let order;
+        if (role === 'router') {
+            order = await Order.findOne({ _id: orderId, customer_id: id })
+                .populate('vehicle_type')
+                .populate({
+                    path: 'customer_id',
+                    select: '-password'
+                });
+        } else if (role === 'driver') {
+            order = await Order.findOne({ _id: orderId })
+                .populate('vehicle_type')
+                .populate({
+                    path: 'customer_id',
+                    select: '-password'
+                });
+        } else {
+            res.status(403).json({ message: 'غير مصرح: يجب أن تكون سائق أو راوتر للوصول إلى هذه البيانات' });
+            return;
+        }
 
         if (!order) {
-            res.status(404).json({ message: 'الطلب غير موجود أو ليس لديك الوصول إلى هذا الطلب' });
+            res.status(404).json({ message: 'الطلب غير موجود' });
             return;
         }
 
