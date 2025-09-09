@@ -82,23 +82,23 @@ app.use('/api/ring', ringRoutes);
 
 
 app.use((err: any, req: any, res: any, next: any) => {
-    if (res.headersSent) {
-        return next(err);
-    }
+  if (res.headersSent) {
+    return next(err);
+  }
 
-    console.error(err.stack);
+  console.error(err.stack);
 
-    if (err.message === 'Not allowed by CORS') {
-        return res.status(403).json({
-            message: 'CORS policy: Request not allowed',
-            error: process.env.NODE_ENV === 'development' ? err.message : undefined
-        });
-    }
-
-    res.status(err.status || 500).json({
-        message: err.message || 'Something went wrong!',
-        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+  if (err.message === 'Not allowed by CORS') {
+    return res.status(403).json({
+      message: 'CORS policy: Request not allowed',
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined
     });
+  }
+
+  res.status(err.status || 500).json({
+    message: err.message || 'Something went wrong!',
+    error: process.env.NODE_ENV === 'development' ? err.message : undefined
+  });
 });
 
 
